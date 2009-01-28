@@ -30,6 +30,10 @@ module Miyako
   class Font
     extend Forwardable
 
+#    OS_MAC_OS_X = "mac_osx"
+#    ORG_ENC = "UTF-8"
+#    NEW_ENC = "UTF-8-MAC"
+    
     attr_reader :size, :line_skip, :height, :ascent, :descent
     attr_accessor :color, :use_shadow, :shadow_color, :shadow_margin, :vspace, :hspace
 
@@ -63,7 +67,8 @@ module Miyako
     def Font.search_font_path_file(hash, path) #:nodoc:
       Dir.glob(path+"*"){|d|
         hash = Font.search_font_path_file(hash, d+"/") if test(?d, d)
-        d = Iconv.conv("UTF-8-MAC", "UTF-8", d.toutf8) if Miyako.getOSName == "mac_osx" # MacOSXはパス名がUTF-8固定のため
+#        d = Iconv.conv("UTF-8-MAC", "UTF-8", d.toutf8) if Miyako.getOSName == "mac_osx" # MacOSXはパス名がUTF-8固定のため
+        d = d.encode(Encoding::UTF_8) if Miyako.getOSName == "mac_osx" # MacOSXはパス名がUTF-8固定のため
         d = d.tr("\\", "\/")
         hash[$1] = d if (d =~ /\/([^\/\.]+\.tt[fc])\z/ || d =~ /\/([^\/\.]+\.otf)\z/) # MacOSX対応
       }
@@ -300,8 +305,7 @@ module Miyako
     #_x_:: 描画位置x軸
     #_y_:: 描画位置Y軸
     def draw_text(dst, str, x, y)
-      str = str.toutf8
-      str = Iconv.conv("UTF-8-MAC", "UTF-8", str) if Miyako.getOSName == "mac_osx"
+      str = str.encode(Encoding::UTF_8)
       str.chars{|c|
         if @use_shadow
           src2 = @font.renderBlendedUTF8(c, @shadow_color[0], @shadow_color[1], @shadow_color[2])
@@ -319,10 +323,20 @@ module Miyako
         else
           break x
         end
-        x += self.text_size(c)[0]
+        x += chr_size_inner(c)
       }
       return x
     end
+
+    #===文字列描画したときの大きさを取得する
+    #現在のフォントの設定で指定の文字列を描画したとき、予想される描画サイズを返す。実際に描画は行われない。
+    #_txt_:: 算出したい文字列
+    #返却値:: 文字列を描画したときの大きさ([w,h]の配列)
+    def chr_size_inner(char)
+      return (char.bytesize == 1 ? @size >> 1 : @size) + (@use_shadow ? @shadow_margin[0] : 0) + @hspace
+    end
+    
+    private :chr_size_inner
 
     #===文字列描画したときの大きさを取得する
     #現在のフォントの設定で指定の文字列を描画したとき、予想される描画サイズを返す。実際に描画は行われない。

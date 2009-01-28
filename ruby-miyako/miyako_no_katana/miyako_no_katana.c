@@ -27,9 +27,14 @@ Copyright:: 2007-2008 Cyross Makoto
 License:: LGPL2.1
  */
 #include <SDL.h>
+#include <SDL_ttf.h>
 #include <stdlib.h>
 #include <math.h>
 #include "ruby.h"
+#include "ruby/encoding.h"
+
+static VALUE layout_calc_layout(VALUE self);
+static VALUE layout_snap(int argc, VALUE *argv, VALUE self);
 
 static VALUE mSDL = Qnil;
 static VALUE mMiyako = Qnil;
@@ -41,6 +46,7 @@ static VALUE mDiagram = Qnil;
 static VALUE eMiyakoError = Qnil;
 static VALUE cGL = Qnil;
 static VALUE cSurface = Qnil;
+static VALUE cTTFFont = Qnil;
 static VALUE cEvent2 = Qnil;
 static VALUE cJoystick = Qnil;
 static VALUE cWaitCounter = Qnil;
@@ -63,6 +69,8 @@ static VALUE cMovie = Qnil;
 static VALUE cProcessor = Qnil;
 static VALUE cYuki = Qnil;
 static VALUE cThread = Qnil;
+static VALUE cEncoding = Qnil;
+static VALUE cIconv = Qnil;
 static VALUE sPoint = Qnil;
 static VALUE sSize = Qnil;
 static VALUE sRect = Qnil;
@@ -75,6 +83,8 @@ static volatile ID id_kakko = Qnil;
 static volatile int zero = Qnil;
 static volatile int one = Qnil;
 static volatile double div255[256];
+static volatile ID id_encode = Qnil;
+static volatile ID id_utf8 = Qnil;
 
 typedef struct
 {
@@ -106,8 +116,10 @@ struct_name* fun(VALUE obj) \
 #define DEFINE_GET_STRUCT(struct_name, fun, klass, klassstr) \
 static GLOBAL_DEFINE_GET_STRUCT(struct_name, fun, klass, klassstr)
 
-// from rubysdl-video.c
+// from rubysdl_video.c
 DEFINE_GET_STRUCT(Surface, GetSurface, cSurface, "SDL::Surface");
+// from rubysdl_ttf.c
+GLOBAL_DEFINE_GET_STRUCT(TTF_Font, Get_TTF_Font, cTTFFont, "SDL::TT::Font");
 
 #define MIYAKO_GETCOLOR(COLOR) \
 	COLOR.r = (Uint32)(((pixel & fmt->Rmask) >> fmt->Rshift) << fmt->Rloss); \
@@ -3605,12 +3617,12 @@ static VALUE layout_move(VALUE self, VALUE dx, VALUE dy)
   VALUE ty = *poy;
   *pox = INT2NUM(NUM2INT(tx)+NUM2INT(dx));
   *poy = INT2NUM(NUM2INT(ty)+NUM2INT(dy));
-  rb_funcall(self, rb_intern("calc_layout"), 0);
+  layout_calc_layout(self);
   if(rb_block_given_p() == Qtrue){
     rb_yield(Qnil);
     *pox = tx;
     *poy = ty;
-    rb_funcall(self, rb_intern("calc_layout"), 0);
+    layout_calc_layout(self);
   }
   return Qnil;
 }
@@ -3624,14 +3636,103 @@ static VALUE layout_move_to(VALUE self, VALUE x, VALUE y)
   VALUE ty = *(off+1);
   *(off+0) = INT2NUM(NUM2INT(tx)+NUM2INT(x)-NUM2INT(*(pos+0)));
   *(off+1) = INT2NUM(NUM2INT(ty)+NUM2INT(y)-NUM2INT(*(pos+1)));
-  rb_funcall(self, rb_intern("calc_layout"), 0);
+  layout_calc_layout(self);
   if(rb_block_given_p() == Qtrue){
     rb_yield(Qnil);
     *(off+0) = tx;
     *(off+1) = ty;
-    rb_funcall(self, rb_intern("calc_layout"), 0);
+    layout_calc_layout(self);
   }
   return Qnil;
+}
+
+static VALUE layout_calc_layout(VALUE self)
+{
+  VALUE layout   = rb_iv_get(self, "@layout");
+  VALUE pos     = *(RSTRUCT_PTR(layout)+0);
+  VALUE loc     = *(RSTRUCT_PTR(layout)+10);
+  VALUE off     = *(RSTRUCT_PTR(layout)+3);
+  VALUE *base   = RSTRUCT_PTR(*(RSTRUCT_PTR(layout)+2));
+  
+  VALUE arg1 = rb_ary_new();
+  rb_ary_push(arg1, nZero);
+  if(*(base+2) == Qnil){ rb_ary_push(arg1, *(RSTRUCT_PTR(rb_iv_get(mScreen, "@@size"))+0)); }
+  else{ rb_ary_push(arg1, *(base+2)); }
+  VALUE lx = rb_proc_call(*(RARRAY_PTR(loc)+0), arg1);
+
+  VALUE arg2 = rb_ary_new();
+  rb_ary_push(arg2, nOne);
+  if(*(base+3) == Qnil){ rb_ary_push(arg2, *(RSTRUCT_PTR(rb_iv_get(mScreen, "@@size"))+1)); }
+  else{ rb_ary_push(arg2, *(base+3)); }
+  VALUE ly = rb_proc_call(*(RARRAY_PTR(loc)+1), arg2);
+
+  *(RSTRUCT_PTR(pos)+0) = INT2NUM(NUM2INT(lx)+NUM2INT(*(RSTRUCT_PTR(off)+0)));
+  *(RSTRUCT_PTR(pos)+1) = INT2NUM(NUM2INT(ly)+NUM2INT(*(RSTRUCT_PTR(off)+1)));
+
+  rb_funcall(self, rb_intern("update_layout_position"), 0);
+
+  VALUE snap     = *(RSTRUCT_PTR(layout)+4);
+  VALUE children = *(RSTRUCT_PTR(snap)+1);
+  int i;
+  for(i=0; i<RARRAY_LEN(children); i++)
+  {
+    layout_snap(0, NULL, *(RARRAY_PTR(children) + i));
+  }
+  return Qnil;
+}
+
+static VALUE layout_add_snap_child(VALUE self, VALUE spr)
+{
+  VALUE layout   = rb_iv_get(self, "@layout");
+  VALUE snap     = *(RSTRUCT_PTR(layout)+4);
+  VALUE children = *(RSTRUCT_PTR(snap)+1);
+  if(rb_ary_includes(children, spr)==Qfalse){ rb_ary_push(children, spr); }
+  layout_calc_layout(self);
+  return self;
+}
+
+static VALUE layout_delete_snap_child(VALUE self, VALUE spr)
+{
+  VALUE layout   = rb_iv_get(self, "@layout");
+  VALUE snap     = *(RSTRUCT_PTR(layout)+4);
+  VALUE children = *(RSTRUCT_PTR(snap)+1);
+  if(TYPE(spr) == T_ARRAY)
+  {
+    int i;
+    for(i=0; i<RARRAY_LEN(spr); i++){ rb_ary_delete(children, *(RARRAY_PTR(spr) + i)); }
+  }
+  else
+  {
+    rb_ary_delete(children, spr);
+  }
+  layout_calc_layout(self);
+  return self;
+}
+
+static VALUE layout_snap(int argc, VALUE *argv, VALUE self)
+{
+  VALUE spr = Qnil;
+  rb_scan_args(argc, argv, "01", &spr);
+  VALUE layout = rb_iv_get(self, "@layout");
+  VALUE snap   = *(RSTRUCT_PTR(layout)+4);
+  VALUE *sprite = RSTRUCT_PTR(snap);
+  if(spr != Qnil)
+  {
+    if(*sprite != Qnil){ layout_delete_snap_child(*sprite, self); }
+    *sprite = spr;
+    layout_add_snap_child(spr, self);
+  }
+  if(*sprite != Qnil)
+  {
+    VALUE *rect = RSTRUCT_PTR(rb_funcall(*sprite, rb_intern("rect"), 0));
+    VALUE *base = RSTRUCT_PTR(*(RSTRUCT_PTR(layout)+2));
+    *(base+0) = *(rect+0);
+    *(base+1) = *(rect+1);
+    *(base+2) = *(rect+2);
+    *(base+3) = *(rect+3);
+  }
+  layout_calc_layout(self);
+  return self;
 }
 
 static VALUE su_move(VALUE self, VALUE dx, VALUE dy)
@@ -3835,32 +3936,214 @@ static VALUE square_in_range(VALUE self, VALUE vx, VALUE vy)
   return Qfalse;
 }
 
-/*
-:nodoc:
-*/
-static VALUE yuki_update_plot_thread(VALUE self)
+static VALUE font_draw_text(VALUE self, VALUE vdst, VALUE str, VALUE vx, VALUE vy)
 {
-  VALUE yuki = rb_iv_get(self, "@yuki");
-  VALUE str_exec = rb_str_new2("exec_plot");
-  VALUE sym_exec = rb_funcall(str_exec, rb_intern("to_sym"), 0);
-  VALUE str_pausing = rb_str_new2("pausing");
-  VALUE sym_pausing = rb_funcall(str_pausing, rb_intern("to_sym"), 0);
-  VALUE str_selecting = rb_str_new2("exec_selecting");
-  VALUE sym_selecting = rb_funcall(str_selecting, rb_intern("to_sym"), 0);
-  VALUE str_waiting = rb_str_new2("waiting");
-  VALUE sym_waiting = rb_funcall(str_waiting, rb_intern("to_sym"), 0);
-  VALUE exec = rb_funcall(yuki, id_kakko, 1, sym_exec);
-  while(exec == Qtrue){
-    VALUE pausing   = rb_funcall(yuki, id_kakko, 1, sym_pausing);
-    if(pausing == Qtrue){ rb_funcall(self, rb_intern("pausing"), 0); }
-    VALUE selecting = rb_funcall(yuki, id_kakko, 1, sym_selecting);
-    if(selecting == Qtrue){ rb_funcall(self, rb_intern("selecting"), 0); }
-    VALUE waiting   = rb_funcall(yuki, id_kakko, 1, sym_waiting);
-    if(waiting == Qtrue){ rb_funcall(self, rb_intern("waiting"), 0); }
-    rb_funcall(cThread, rb_intern("pass"), 0);
-    exec = rb_funcall(yuki, id_kakko, 1, sym_exec);
+  rb_secure(4);
+  StringValue(str);
+
+  str = rb_funcall(str, id_encode, 1, rb_const_get(cEncoding, id_utf8));
+  
+  TTF_Font *font = Get_TTF_Font(rb_iv_get(self, "@font"));
+
+  VALUE *p_font_color = RARRAY_PTR(rb_iv_get(self, "@color"));
+  SDL_Color fore_color;
+  fore_color.r = NUM2INT(*(p_font_color+0));
+  fore_color.g = NUM2INT(*(p_font_color+1));
+  fore_color.b = NUM2INT(*(p_font_color+2));
+  fore_color.unused = 0;
+
+  VALUE *p_shadow_color = RARRAY_PTR(rb_iv_get(self, "@shadow_color"));
+  SDL_Color shadow_color;
+  shadow_color.r = NUM2INT(*(p_shadow_color+0));
+  shadow_color.g = NUM2INT(*(p_shadow_color+1));
+  shadow_color.b = NUM2INT(*(p_shadow_color+2));
+  shadow_color.unused = 0;
+
+  int font_size = NUM2INT(rb_iv_get(self, "@size"));
+  VALUE use_shadow = rb_iv_get(self, "@use_shadow");
+  VALUE shadow_margin = rb_iv_get(self, "@shadow_margin");
+  int shadow_margin_x = (use_shadow == Qtrue ? NUM2INT(*(RARRAY_PTR(shadow_margin)+0)) : 0);
+  int shadow_margin_y = (use_shadow == Qtrue ? NUM2INT(*(RARRAY_PTR(shadow_margin)+1)) : 0);
+  int hspace = NUM2INT(rb_iv_get(self, "@hspace"));
+
+  MIYAKO_GET_UNIT_1(vdst, dunit, dst);
+	Uint32 *pdst = (Uint32 *)(dst->pixels);
+  MiyakoColor scolor, dcolor;
+  SDL_Rect srect, drect;
+	Uint32 dst_a = 0;
+  Uint32 pixel;
+
+	SDL_PixelFormat *fmt = dst->format;
+  SDL_Surface *scr = GetSurface(rb_iv_get(mScreen, "@@screen"))->surface;
+  if(dst == scr){ dst_a = (0xff >> fmt->Aloss) << fmt->Ashift; }
+
+	MIYAKO_SET_RECT(drect, dunit);
+
+  int x =  NUM2INT(vx);
+  int y =  NUM2INT(vy);
+  
+  char *sptr = RSTRING_PTR(str);
+
+  int tx = x;
+  int ty = y;
+
+  if(use_shadow == Qtrue)
+  {
+    SDL_Surface *src2 = TTF_RenderUTF8_Blended(font, sptr, shadow_color);
+
+    if(src2 == NULL) return INT2NUM(tx);
+    Uint32 *psrc2 = (Uint32 *)(src2->pixels);
+	
+    srect.x = 0;
+    srect.y = 0;
+    srect.w = src2->w;
+    srect.h = src2->h;
+
+    x += shadow_margin_x;
+    y += shadow_margin_y;
+      
+    MIYAKO_INIT_RECT1;
+
+    SDL_LockSurface(src2);
+    SDL_LockSurface(dst);
+  
+    int px, py, sy;
+    for(py = dly, sy = srect.y; py < dmy; py++, sy++)
+    {
+      Uint32 *ppsrc2 = psrc2 + sy * src2->w;
+      Uint32 *ppdst = pdst + py * dst->w + dlx;
+      for(px = dlx; px < dmx; px++)
+      {
+        pixel = *ppdst | dst_a;
+        MIYAKO_GETCOLOR(dcolor);
+        pixel = *ppsrc2;
+        MIYAKO_GETCOLOR(scolor);
+        if(scolor.a == 0){ ppsrc2++; ppdst++; continue; }
+        if(dcolor.a == 0 || scolor.a == 255){
+          *ppdst = pixel;
+          ppsrc2++;
+          ppdst++;
+          continue;
+        }
+        int a1 = scolor.a + 1;
+        int a2 = 256 - scolor.a;
+        *ppdst = (((scolor.r * a1 + dcolor.r * a2) >> 8) >> fmt->Rloss) << fmt->Rshift |
+                 (((scolor.g * a1 + dcolor.g * a2) >> 8) >> fmt->Gloss) << fmt->Gshift |
+                 (((scolor.b * a1 + dcolor.b * a2) >> 8) >> fmt->Bloss) << fmt->Bshift |
+                 (255 >> fmt->Aloss) << fmt->Ashift;
+        ppsrc2++;
+        ppdst++;
+      }
+    }
+
+    SDL_UnlockSurface(src2);
+    SDL_UnlockSurface(dst);
+
+    SDL_FreeSurface(src2);
+
+    drect.x = NUM2INT(*(RSTRUCT_PTR(dunit) + 1));
+    drect.y = NUM2INT(*(RSTRUCT_PTR(dunit) + 2));
+    drect.w = NUM2INT(*(RSTRUCT_PTR(dunit) + 3));
+    drect.h = NUM2INT(*(RSTRUCT_PTR(dunit) + 4));
   }
-  return self;
+
+  x = tx;
+  y = ty;
+
+  SDL_Surface *src = TTF_RenderUTF8_Blended(font, sptr, fore_color);
+
+  if(src == NULL) return INT2NUM(x);
+
+  Uint32 *psrc = (Uint32 *)(src->pixels);
+
+  srect.x = 0;
+  srect.y = 0;
+  srect.w = src->w;
+  srect.h = src->h;
+
+  MIYAKO_INIT_RECT1;
+
+  SDL_LockSurface(src);
+  SDL_LockSurface(dst);
+  
+  int px, py, sy;
+  for(py = dly, sy = srect.y; py < dmy; py++, sy++)
+  {
+    Uint32 *ppsrc = psrc + sy * src->w;
+    Uint32 *ppdst = pdst + py * dst->w + dlx;
+    for(px = dlx; px < dmx; px++)
+    {
+      pixel = *ppdst | dst_a;
+      MIYAKO_GETCOLOR(dcolor);
+      pixel = *ppsrc;
+      MIYAKO_GETCOLOR(scolor);
+      if(scolor.a == 0){ ppsrc++; ppdst++; continue; }
+      if(dcolor.a == 0 || scolor.a == 255){
+        *ppdst = pixel;
+        ppsrc++;
+        ppdst++;
+        continue;
+      }
+      int a1 = scolor.a + 1;
+      int a2 = 256 - scolor.a;
+      *ppdst = (((scolor.r * a1 + dcolor.r * a2) >> 8) >> fmt->Rloss) << fmt->Rshift |
+               (((scolor.g * a1 + dcolor.g * a2) >> 8) >> fmt->Gloss) << fmt->Gshift |
+               (((scolor.b * a1 + dcolor.b * a2) >> 8) >> fmt->Bloss) << fmt->Bshift |
+               (255 >> fmt->Aloss) << fmt->Ashift;
+      ppsrc++;
+      ppdst++;
+    }
+  }
+
+  SDL_UnlockSurface(src);
+  SDL_UnlockSurface(dst);
+  SDL_FreeSurface(src);
+
+  int i, n;
+  const char *ptr = RSTRING_PTR(str);
+  int len = RSTRING_LEN(str);
+  rb_encoding *enc = rb_enc_get(str);
+  for(i=0; i<len; i+=n)
+  {
+    n = rb_enc_mbclen(ptr+i, ptr+len, enc);
+    VALUE chr = rb_str_subseq(str, i, n);
+    int clen = RSTRING_LEN(chr);
+    x += (clen==1 ? font_size>>1 : font_size) + shadow_margin_x + hspace;
+  }
+  return INT2NUM(x);
+}
+
+static VALUE font_line_height(VALUE self)
+{
+  int height = NUM2INT(rb_iv_get(self, "@line_skip"));
+  height += NUM2INT(rb_iv_get(self, "@vspace"));
+  height += (rb_iv_get(self, "@use_shadow") == Qtrue ? NUM2INT(*(RARRAY_PTR(rb_iv_get(self, "@shadow_margin"))+1)) : 0);
+  return INT2NUM(height);
+}
+
+static VALUE font_text_size(VALUE self, VALUE str)
+{
+  int font_size = NUM2INT(rb_iv_get(self, "@size"));
+  VALUE use_shadow = rb_iv_get(self, "@use_shadow");
+  VALUE shadow_margin = rb_iv_get(self, "@shadow_margin");
+  int shadow_margin_x = (use_shadow == Qtrue ? NUM2INT(*(RARRAY_PTR(shadow_margin)+0)) : 0);
+  int hspace = NUM2INT(rb_iv_get(self, "@hspace"));
+
+  int i, n, l=0;
+  const char *ptr = RSTRING_PTR(str);
+  int len = RSTRING_LEN(str);
+  rb_encoding *enc = rb_enc_get(str);
+  for(i=0; i<len; i+=n)
+  {
+    n = rb_enc_mbclen(ptr+i, ptr+len, enc);
+    VALUE chr = rb_str_subseq(str, i, n);
+    int clen = RSTRING_LEN(chr);
+    l += (clen==1 ? font_size>>1 : font_size) + shadow_margin_x + hspace;
+  }
+  VALUE array = rb_ary_new();
+  rb_ary_push(array, INT2NUM(l));
+  rb_ary_push(array, font_line_height(self));
+  return array;
 }
 
 void Init_miyako_no_katana()
@@ -3875,6 +4158,7 @@ void Init_miyako_no_katana()
   eMiyakoError  = rb_define_class_under(mMiyako, "MiyakoError", rb_eException);
   cGL  = rb_define_module_under(mSDL, "GL");
   cSurface = rb_define_class_under(mSDL, "Surface", rb_cObject);
+  cTTFFont = rb_define_class_under(mSDL, "TTF", rb_cObject);
   cEvent2  = rb_define_class_under(mSDL, "Event2", rb_cObject);
   cJoystick  = rb_define_class_under(mSDL, "Joystick", rb_cObject);
   cWaitCounter  = rb_define_class_under(mMiyako, "WaitCounter", rb_cObject);
@@ -3897,10 +4181,12 @@ void Init_miyako_no_katana()
   cProcessor = rb_define_class_under(mDiagram, "Processor", rb_cObject);
   cYuki = rb_define_class_under(mMiyako, "Yuki", rb_cObject);
   cThread = rb_define_class("Thread", rb_cObject);
+  cEncoding = rb_define_class("Encoding", rb_cObject);
   sPoint = rb_define_class_under(mMiyako, "PointStruct", rb_cStruct);
   sSize = rb_define_class_under(mMiyako, "SizeStruct", rb_cStruct);
   sRect = rb_define_class_under(mMiyako, "RectStruct", rb_cStruct);
   sSquare = rb_define_class_under(mMiyako, "SquareStruct", rb_cStruct);
+  cIconv = rb_define_class("Iconv", rb_cObject);
 
   id_update = rb_intern("update");
   id_kakko  = rb_intern("[]");
@@ -3910,6 +4196,9 @@ void Init_miyako_no_katana()
   one = 1;
   nOne = INT2NUM(one);
 
+  id_utf8   = rb_intern("UTF_8");
+  id_encode = rb_intern("encode");
+  
   rb_define_singleton_method(cBitmap, "blit_aa!", bitmap_miyako_blit_aa, 4);
   rb_define_singleton_method(cBitmap, "blit_and!", bitmap_miyako_blit_and, 3);
   rb_define_singleton_method(cBitmap, "blit_or!", bitmap_miyako_blit_or, 3);
@@ -3941,6 +4230,10 @@ void Init_miyako_no_katana()
 
 	rb_define_method(mLayout, "move", layout_move, 2);
 	rb_define_method(mLayout, "move_to", layout_move_to, 2);
+	rb_define_method(mLayout, "calc_layout", layout_calc_layout, 0);
+	rb_define_method(mLayout, "snap", layout_snap, -1);
+	rb_define_method(mLayout, "add_snap_child", layout_add_snap_child, 1);
+	rb_define_method(mLayout, "delete_snap_child", layout_delete_snap_child, 1);
   
   rb_define_method(cWaitCounter, "start", counter_start, 0);
   rb_define_method(cWaitCounter, "stop",  counter_stop,  0);
@@ -3994,7 +4287,6 @@ void Init_miyako_no_katana()
   rb_define_method(cCollisions, "cover_all?", collisions_cover_all, 1);
 
   rb_define_method(cProcessor, "main_loop", processor_mainloop, 0);
-  rb_define_method(cYuki, "update_plot_thread", yuki_update_plot_thread, 0);
   
   rb_define_method(cMapLayer, "render", maplayer_render, 0);
   rb_define_method(cFixedMapLayer, "render", fixedmaplayer_render, 0);
@@ -4005,6 +4297,10 @@ void Init_miyako_no_katana()
   rb_define_method(cMapLayer, "render_to", maplayer_render_to_sprite, 1);
   rb_define_method(cFixedMapLayer, "render_to", fixedmaplayer_render_to_sprite, 1);
 
+  rb_define_method(cFont, "draw_text", font_draw_text, 4);
+  rb_define_method(cFont, "line_height", font_line_height, 0);
+  rb_define_method(cFont, "text_size", font_text_size, 1);
+  
   rb_define_method(sPoint, "move", point_move, 2);
   rb_define_method(sPoint, "move_to", point_move_to, 2);
   rb_define_method(sSize, "resize", size_resize, 2);
