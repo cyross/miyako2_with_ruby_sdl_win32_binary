@@ -1,0 +1,882 @@
+Common subdirectories: opengl-0.32g.org/.svn and opengl-0.32g/.svn
+diff opengl-0.32g.org/extconf.rb opengl-0.32g/extconf.rb
+23c23
+< when /cygwin/
+---
+> when /mingw/
+diff opengl-0.32g.org/glu.c opengl-0.32g/glu.c
+209a210
+> #if 0 // 2009.01.17 Cyross Makoto
+210a212,214
+> #else
+>     VALUE ary_ctl1;
+> #endif // 2009.01.17 Cyross Makoto
+214c218
+< 	    uknot_count = RARRAY(rb_Array(args[1]))->len;
+---
+> 	    uknot_count = RARRAY_LEN(rb_Array(args[1]));
+216a221
+> #if 0
+225a231,241
+> #else
+> 	    ary_ctl1 = rb_Array(args[2]);
+> 	    type = (GLenum)NUM2INT(args[3]);
+> 	    u_stride = get_curve_dim(type);
+> 	    uorder = RARRAY_LEN(ary_ctl1);
+> 	    ctlarray = ALLOC_N(GLfloat, u_stride*uorder);
+> 	    for (i = 0; i < RARRAY_LEN(ary_ctl1); i++) {
+>         ary2cflt(RARRAY_PTR(ary_ctl1)[i], tmp, 4);
+>         memcpy(&ctlarray[i*u_stride], tmp, u_stride);
+> 	    }
+> #endif
+235a252
+> #if 0
+245a263,274
+> #else
+> 	    ary_ctl1 = rb_Array(args[4]);
+> 	    if (TYPE(RARRAY_PTR(ary_ctl1)[0]) == T_ARRAY)
+>       for (i = 0; i < RARRAY_LEN(ary_ctl1); i++) {
+> 		    ary2cflt(RARRAY_PTR(ary_ctl1)[i], tmp, 4);
+> 		    memcpy(&ctlarray[i*u_stride], tmp, u_stride);
+> 	    	}
+> 	    else {
+>         /* ary2cflt((VALUE)ary_ctl1, ctlarray, u_stride*uorder); //--->Mathematically incorrect */
+>         ary2cflt(ary_ctl1, ctlarray, (uknot_count-uorder)*u_stride);
+> 	    }
+> #endif
+310a340
+> #if 0
+311a342,344
+> #else
+>     VALUE ary_ctl1;
+> #endif
+316c349
+< 	    sknot_count = RARRAY(rb_Array(args[1]))->len;
+---
+> 	    sknot_count = RARRAY_LEN(rb_Array(args[1]));
+319c352
+< 	    tknot_count = RARRAY(rb_Array(args[2]))->len;
+---
+> 	    tknot_count = RARRAY_LEN(rb_Array(args[2]));
+321a355
+> #if 0
+331a366,377
+> #else
+> 	    ary_ctl1 = rb_Array(args[3]);
+> 	    sorder = RARRAY_LEN(ary_ctl1);
+> 	    torder = RARRAY_LEN(rb_Array(RARRAY_PTR(ary_ctl1)[0]));
+> 	    type = (GLenum)NUM2INT(args[4]);
+> 	    t_stride = get_surface_dim(type);
+> 	    s_stride = t_stride * sorder;
+> 	    ctlarray = ALLOC_N(GLfloat, t_stride*s_stride);
+> 	    work_ary = rb_ary_new();
+> 	    mary2ary(ary_ctl1, work_ary);
+> 	    ary2cflt(work_ary, ctlarray, t_stride*s_stride);
+> #endif
+346a393
+> #if 0
+357a405,417
+> #else
+> 	    ary_ctl1 = rb_Array(args[7]);
+> 	    if (TYPE(RARRAY_PTR(ary_ctl1)[0]) == T_ARRAY) {
+>         work_ary = rb_ary_new();
+>         mary2ary(ary_ctl1, work_ary);
+>         /* ary2cflt(work_ary, ctlarray, sorder*torder*type_len); //--->Mathematically incorrect */
+>         ary2cflt(work_ary, ctlarray, (sknot_count-sorder)*(tknot_count-torder)*type_len);
+> 	    }
+> 	    else {
+>         /* ary2cflt((VALUE)ary_ctl1, ctlarray, sorder*torder*type_len); //--->Mathematically incorrect */
+>         ary2cflt(ary_ctl1, ctlarray, (sknot_count-sorder)*(tknot_count-torder)*type_len);
+> 	    }
+> #endif
+412a473
+> #if 0
+413a475,477
+> #else
+>     VALUE ary_ctl1;
+> #endif
+417a482
+> #if 0
+426a492,502
+> #else
+> 	    ary_ctl1 = rb_Array(args[2]);
+> 	    count = RARRAY_LEN(ary_ctl1);
+> 	    type = NUM2INT(args[2]);
+> 	    stride = (type == GLU_MAP1_TRIM_2 ? 2 : 3);
+> 	    array = ALLOC_N(GLfloat, count*stride);
+> 	    for (i = 0; i < RARRAY_LEN(ary_ctl1); i++) {
+>         ary2cflt(RARRAY_PTR(ary_ctl1)[i], tmp, 3);
+>         memcpy(&array[i*stride], tmp, stride);
+> 	    }
+> #endif
+432a509
+> #if 0
+440a518,527
+> #else
+> 	    ary_ctl1 = rb_Array(args[2]);
+> 	    if (TYPE(RARRAY_PTR(ary_ctl1)[0]) == T_ARRAY)
+>         for (i = 0; i < RARRAY_LEN(ary_ctl1); i++) {
+>           ary2cflt(RARRAY_PTR(ary_ctl1)[i], tmp, 3);
+>           memcpy(&array[i*stride], tmp, stride);
+> 	    	}
+> 	    else
+>         ary2cflt(ary_ctl1, array, count*stride);
+> #endif
+1315,1317c1402,1404
+<         if (RSTRING(arg7)->len < size)
+<             rb_raise(rb_eArgError, "string length:%d",RSTRING(arg7)->len);
+<         data = RSTRING(arg7)->ptr;
+---
+>         if (RSTRING_LEN(arg7) < size)
+>             rb_raise(rb_eArgError, "string length:%d",RSTRING_LEN(arg7));
+>         data = RSTRING_PTR(arg7);
+1350,1352c1437,1439
+<         if (RSTRING(arg5)->len < size)
+<             rb_raise(rb_eArgError, "string length:%d",RSTRING(arg5)->len);
+<         datain = RSTRING(arg5)->ptr;
+---
+>         if (RSTRING_LEN(arg5) < size)
+>             rb_raise(rb_eArgError, "string length:%d",RSTRING_LEN(arg5));
+>         datain = RSTRING_PTR(arg5);
+1362c1449
+< 		widthout, heightout, typeout, (GLvoid*)RSTRING(ret)->ptr);
+---
+> 		widthout, heightout, typeout, (GLvoid*)RSTRING_PTR(ret));
+diff opengl-0.32g.org/glut.c opengl-0.32g/glut.c
+66c66
+<     largc = RARRAY(arg1)->len+1;
+---
+>     largc = RARRAY_LEN(arg1)+1;
+70c70
+<         largv[i] = STR2CSTR(RARRAY(arg1)->ptr[i-1]);
+---
+>         largv[i] = STR2CSTR(RARRAY_PTR(arg1)[i-1]);
+76,77c76,77
+<     for (i = 0; i < RARRAY(arg1)->len; i++) {
+<         ptr = RARRAY(arg1)->ptr[i];
+---
+>     for (i = 0; i < RARRAY_LEN(arg1); i++) {
+>         ptr = RARRAY_PTR(arg1)[i];
+110c110
+<     glutInitDisplayString(RSTRING(arg1)->ptr);
+---
+>     glutInitDisplayString(RSTRING_PTR(arg1));
+186c186
+<     ret = glutCreateWindow(RSTRING(title)->ptr);
+---
+>     ret = glutCreateWindow(RSTRING_PTR(title));
+278c278
+<     glutSetWindowTitle(RSTRING(arg1)->ptr);
+---
+>     glutSetWindowTitle(RSTRING_PTR(arg1));
+288c288
+<     glutSetIconTitle(RSTRING(arg1)->ptr);
+---
+>     glutSetIconTitle(RSTRING_PTR(arg1));
+516c516
+<     glutAddMenuEntry(RSTRING(arg1)->ptr, arg_pair);
+---
+>     glutAddMenuEntry(RSTRING_PTR(arg1), arg_pair);
+528c528
+<     glutAddSubMenu(RSTRING(arg1)->ptr, value);
+---
+>     glutAddSubMenu(RSTRING_PTR(arg1), value);
+552c552
+<     glutChangeToMenuEntry(item, RSTRING(arg2)->ptr, arg_pair);
+---
+>     glutChangeToMenuEntry(item, RSTRING_PTR(arg2), arg_pair);
+565c565
+<     glutChangeToSubMenu(item, RSTRING(arg2)->ptr, submenu);
+---
+>     glutChangeToSubMenu(item, RSTRING_PTR(arg2), submenu);
+918c918
+<     ret = glutExtensionSupported(RSTRING(arg1)->ptr);
+---
+>     ret = glutExtensionSupported(RSTRING_PTR(arg1));
+1000c1000
+<     ret = glutBitmapLength((void *)font, (const unsigned char*)RSTRING(arg2)->ptr);
+---
+>     ret = glutBitmapLength((void *)font, (const unsigned char*)RSTRING_PTR(arg2));
+1012c1012
+<     ret = glutStrokeLength((void *)font, (const unsigned char*)RSTRING(arg2)->ptr);
+---
+>     ret = glutStrokeLength((void *)font, (const unsigned char*)RSTRING_PTR(arg2));
+diff opengl-0.32g.org/ogl.c opengl-0.32g/ogl.c
+184,187c184,186
+<         ary = RARRAY(arg1);
+< 	for(i = 0; i < ary->len && i < 128; i++)
+< 	    mask[i] = (GLubyte)NUM2INT(ary->ptr[i]);
+<     }
+---
+>       for(i = 0; i < RARRAY_LEN(arg1) && i < 128; i++)
+>         mask[i] = (GLubyte)NUM2INT(RARRAY_PTR(arg1)[i]);
+>       }
+189,191c188,190
+< 	if (RSTRING(arg1)->len < 128)
+< 	    rb_raise(rb_eArgError, "string length:%d", RSTRING(arg1)->len);
+< 	memcpy(mask, RSTRING(arg1)->ptr, 128);
+---
+>       if (RSTRING_LEN(arg1) < 128)
+>         rb_raise(rb_eArgError, "string length:%d", RSTRING_LEN(arg1));
+>       memcpy(mask, RSTRING_PTR(arg1), 128);
+194c193
+< 	rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(arg1));
+---
+>       rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(arg1));
+717,719c716,718
+< 	type = GL_BYTE;
+< 	lists = RSTRING(arg1)->ptr;
+< 	n = RSTRING(arg1)->len;
+---
+>       type = GL_BYTE;
+>       lists = RSTRING_PTR(arg1);
+>       n = RSTRING_LEN(arg1);
+722,726c721,725
+< 	type = GL_INT;
+< 	lists = ALLOC_N(int, RARRAY(arg1)->len);
+< 	if (!lists)
+< 	    rb_raise(rb_eRuntimeError, "GL.CallLists memory allocation");
+< 	n = ary2cint(arg1,lists,0);
+---
+>       type = GL_INT;
+>       lists = ALLOC_N(int, RARRAY_LEN(arg1));
+>       if (!lists)
+>         rb_raise(rb_eRuntimeError, "GL.CallLists memory allocation");
+>       n = ary2cint(arg1,lists,0);
+920c919
+<     RArray *ary;
+---
+>     VALUE ary;
+922c921
+< 	case 1:
+---
+>       case 1:
+924,925c923,924
+< 		ary = RARRAY(args[0]);
+< 		switch (ary->len) {
+---
+>         ary = args[0];
+>         switch (RARRAY_LEN(ary)) {
+927,928c926,927
+< 			gl_Vertex2d(obj,ary->ptr[0],ary->ptr[1]);
+< 			break;
+---
+>           gl_Vertex2d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1]);
+>           break;
+930,931c929,930
+< 			gl_Vertex3d(obj,ary->ptr[0],ary->ptr[1],ary->ptr[2]);
+< 			break;
+---
+>           gl_Vertex3d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2]);
+>           break;
+933,934c932,933
+< 			gl_Vertex4d(obj,ary->ptr[0],ary->ptr[1],ary->ptr[2],ary->ptr[3]);
+< 			break;
+---
+>           gl_Vertex4d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2],RARRAY_PTR(ary)[3]);
+>           break;
+936,937c935,936
+< 			rb_raise(rb_eRuntimeError, "glVertex vertex num error!:%d", ary->len);
+< 		}
+---
+>           rb_raise(rb_eRuntimeError, "glVertex vertex num error!:%d", RARRAY_LEN(ary));
+>         }
+940c939
+< 		rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+---
+>         rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+942,950c941,949
+< 	case 2:
+< 		gl_Vertex2d(obj,args[0], args[1]);
+< 		break;
+< 	case 3:
+< 		gl_Vertex3d(obj,args[0], args[1], args[2]);
+< 		break;
+< 	case 4:
+< 		gl_Vertex4d(obj,args[0], args[1], args[2], args[3]);
+< 		break;
+---
+>     case 2:
+>       gl_Vertex2d(obj,args[0], args[1]);
+>       break;
+>     case 3:
+>       gl_Vertex3d(obj,args[0], args[1], args[2]);
+>       break;
+>     case 4:
+>       gl_Vertex4d(obj,args[0], args[1], args[2], args[3]);
+>       break;
+1027c1026
+<     RArray* ary;
+---
+>     VALUE ary;
+1029c1028
+< 	case 1:
+---
+>     case 1:
+1031,1035c1030,1034
+< 		ary = RARRAY(args[0]);
+< 		switch (ary->len) {
+< 		    case 3:
+< 			gl_Normal3d(obj,ary->ptr[0], ary->ptr[1],ary->ptr[2]);
+< 			break;
+---
+>         ary = args[0];
+>         switch (RARRAY_LEN(ary)) {
+>         case 3:
+>           gl_Normal3d(obj,RARRAY_PTR(ary)[0], RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2]);
+>           break;
+1037,1038c1036,1037
+< 			rb_raise(rb_eArgError, "array length:%d", ary->len);
+< 		}
+---
+>           rb_raise(rb_eArgError, "array length:%d", RARRAY_LEN(ary));
+>         }
+1041,1043c1040,1042
+< 		rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+< 	    break;
+< 	case 3:
+---
+>         rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+>         break;
+>     case 3:
+1046c1045
+< 	default:
+---
+>     default:
+1315c1314
+<     RArray *ary;
+---
+>     VALUE ary;
+1317c1316
+< 	case 1:
+---
+>     case 1:
+1319,1320c1318,1319
+< 		ary = RARRAY(args[0]);
+< 		switch (ary->len) {
+---
+>         ary = args[0];
+>         switch (RARRAY_LEN(ary)) {
+1322,1323c1321,1322
+< 			gl_Color3d(obj,ary->ptr[0],ary->ptr[1],ary->ptr[2]);
+< 			break;
+---
+>           gl_Color3d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2]);
+>           break;
+1325,1326c1324,1325
+< 			gl_Color4d(obj,ary->ptr[0],ary->ptr[1],ary->ptr[2],ary->ptr[3]);
+< 			break;
+---
+>           gl_Color4d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2],RARRAY_PTR(ary)[3]);
+>           break;
+1328,1329c1327,1328
+< 			rb_raise(rb_eArgError, "array length:%d", ary->len);
+< 		}
+---
+>           rb_raise(rb_eArgError, "array length:%d", RARRAY_LEN(ary));
+>         }
+1332,1334c1331,1333
+< 		rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+< 	    break;
+< 	case 3:
+---
+>         rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+>       break;
+>     case 3:
+1337c1336
+< 	case 4:
+---
+>     case 4:
+1340c1339
+< 	default:
+---
+>     default:
+1545c1544
+<     RArray *ary;
+---
+>     VALUE ary;
+1547c1546
+< 	case 1:
+---
+>     case 1:
+1549,1550c1548,1549
+< 		ary = RARRAY(args[0]);
+< 		switch (ary->len) {
+---
+>         ary = args[0];
+>         switch (RARRAY_LEN(ary)) {
+1552,1553c1551,1552
+< 			gl_TexCoord2d(obj,ary->ptr[0],ary->ptr[1]);
+< 			break;
+---
+>           gl_TexCoord2d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1]);
+>           break;
+1555,1556c1554,1555
+< 			gl_TexCoord3d(obj,ary->ptr[0],ary->ptr[1],ary->ptr[2]);
+< 			break;
+---
+>           gl_TexCoord3d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2]);
+>           break;
+1558,1559c1557,1558
+< 			gl_TexCoord4d(obj,ary->ptr[0],ary->ptr[1],ary->ptr[2],ary->ptr[3]);
+< 			break;
+---
+>           gl_TexCoord4d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2],RARRAY_PTR(ary)[3]);
+>           break;
+1561,1562c1560,1561
+< 			rb_raise(rb_eArgError, "array length:%d", num);
+< 		}
+---
+>           rb_raise(rb_eArgError, "array length:%d", num);
+>         }
+1565c1564
+< 		rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+---
+>         rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+1567,1575c1566,1574
+< 	case 2:
+< 		gl_TexCoord2d(obj,args[0], args[1]);
+< 		break;
+< 	case 3:
+< 		gl_TexCoord3d(obj,args[0], args[1], args[2]);
+< 		break;
+< 	case 4:
+< 		gl_TexCoord4d(obj,args[0], args[1], args[2], args[3]);
+< 		break;
+---
+>     case 2:
+>       gl_TexCoord2d(obj,args[0], args[1]);
+>       break;
+>     case 3:
+>       gl_TexCoord3d(obj,args[0], args[1], args[2]);
+>       break;
+>     case 4:
+>       gl_TexCoord4d(obj,args[0], args[1], args[2], args[3]);
+>       break;
+1743c1742
+<     RArray *ary;
+---
+>     VALUE ary;
+1745c1744
+< 	case 1:
+---
+>     case 1:
+1747,1748c1746,1747
+< 		ary = RARRAY(args[0]);
+< 		switch (ary->len) {
+---
+>         ary = args[0];
+>         switch (RARRAY_LEN(ary)) {
+1750,1751c1749,1750
+< 			gl_RasterPos2d(obj,ary->ptr[0],ary->ptr[1]);
+< 			break;
+---
+>           gl_RasterPos2d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1]);
+>           break;
+1753,1754c1752,1753
+< 			gl_RasterPos3d(obj,ary->ptr[0],ary->ptr[1],ary->ptr[2]);
+< 			break;
+---
+>           gl_RasterPos3d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2]);
+>           break;
+1756,1757c1755,1756
+< 			gl_RasterPos4d(obj,ary->ptr[0],ary->ptr[1],ary->ptr[2],ary->ptr[3]);
+< 			break;
+---
+>           gl_RasterPos4d(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2],RARRAY_PTR(ary)[3]);
+>           break;
+1759,1760c1758,1759
+< 			rb_raise(rb_eArgError, "array length:%d", num);
+< 		}
+---
+>           rb_raise(rb_eArgError, "array length:%d", num);
+>         }
+1763c1762
+< 		rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+---
+>         rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+1765,1773c1764,1772
+< 	case 2:
+< 		gl_RasterPos2d(obj,args[0], args[1]);
+< 		break;
+< 	case 3:
+< 		gl_RasterPos3d(obj,args[0], args[1], args[2]);
+< 		break;
+< 	case 4:
+< 		gl_RasterPos4d(obj,args[0], args[1], args[2], args[3]);
+< 		break;
+---
+>     case 2:
+>       gl_RasterPos2d(obj,args[0], args[1]);
+>       break;
+>     case 3:
+>       gl_RasterPos3d(obj,args[0], args[1], args[2]);
+>       break;
+>     case 4:
+>       gl_RasterPos4d(obj,args[0], args[1], args[2], args[3]);
+>       break;
+1845c1844
+<     RArray *ary;
+---
+>     VALUE ary;
+1847c1846
+< 	case 1:
+---
+>     case 1:
+1849,1850c1848,1849
+< 		ary = RARRAY(args[0]);
+< 		switch (ary->len) {
+---
+>         ary = args[0];
+>         switch (RARRAY_LEN(ary)) {
+1852,1853c1851,1852
+< 			gl_Rectd(obj,ary->ptr[0],ary->ptr[1],ary->ptr[2],ary->ptr[3]);
+< 			break;
+---
+>           gl_Rectd(obj,RARRAY_PTR(ary)[0],RARRAY_PTR(ary)[1],RARRAY_PTR(ary)[2],RARRAY_PTR(ary)[3]);
+>           break;
+1855,1856c1854,1855
+< 			rb_raise(rb_eArgError, "array length:%d", ary->len);
+< 		}
+---
+>           rb_raise(rb_eArgError, "array length:%d", RARRAY_LEN(ary));
+>         }
+1859c1858
+< 		rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+---
+>         rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(args[0])));
+1861,1865c1860,1864
+< 	case 4:
+< 		gl_Rectd(obj,args[0], args[1], args[2], args[3]);
+< 		break;
+< 	default:
+< 		rb_raise(rb_eArgError, "arg length:%d", num);
+---
+>     case 4:
+>       gl_Rectd(obj,args[0], args[1], args[2], args[3]);
+>       break;
+>     default:
+>       rb_raise(rb_eArgError, "arg length:%d", num);
+1913c1912
+<     RArray* ary;
+---
+>     VALUE ary;
+1919,1922c1918,1921
+< 	ary = RARRAY(arg3);
+<         for(i = 0; i < ary->len && i < 4; i++){
+< 	    params[i] = (GLint)NUM2INT(ary->ptr[i]);
+< 	}
+---
+>       ary = arg3;
+>       for(i = 0; i < RARRAY_LEN(ary) && i < 4; i++){
+>         params[i] = (GLint)NUM2INT(RARRAY_PTR(ary)[i]);
+>       }
+1925c1924
+< 	rb_raise(rb_eTypeError, "type mismatch:%s",rb_class2name(arg3));
+---
+>       rb_raise(rb_eTypeError, "type mismatch:%s",rb_class2name(arg3));
+1942,1943c1941,1942
+< 	ary2cflt(arg3,params,4);
+< 	glLightfv(light,pname,params);
+---
+>         ary2cflt(arg3,params,4);
+>         glLightfv(light,pname,params);
+1946,1947c1945,1946
+< 	params[0] = (GLfloat)NUM2DBL(arg3);
+< 	glLightf(light,pname,params[0]);
+---
+>       params[0] = (GLfloat)NUM2DBL(arg3);
+>       glLightf(light,pname,params[0]);
+2147,2150c2146,2149
+< 	rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(arg7)));
+<     if (RSTRING(arg7)->len < (width * height / 8))
+< 	rb_raise(rb_eArgError, "string length:%d", RSTRING(arg7)->len);
+<     bitmap = (const GLubyte*)RSTRING(arg7)->ptr;
+---
+>       rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(CLASS_OF(arg7)));
+>     if (RSTRING_LEN(arg7) < (width * height / 8))
+>       rb_raise(rb_eArgError, "string length:%d", RSTRING_LEN(arg7));
+>     bitmap = (const GLubyte*)RSTRING_PTR(arg7);
+2174,2178c2173,2177
+< 	type_size = gltype_size(type) / 8;
+< 	format_size = glformat_size(format);
+<         pixels = allocate_buffer_with_string(width*height*format_size*type_size);
+< 	glReadPixels(x,y,width,height,format,type,(GLvoid*)RSTRING(pixels)->ptr);
+< 	return pixels;
+---
+>       type_size = gltype_size(type) / 8;
+>       format_size = glformat_size(format);
+>       pixels = allocate_buffer_with_string(width*height*format_size*type_size);
+>       glReadPixels(x,y,width,height,format,type,(GLvoid*)RSTRING_PTR(pixels));
+>       return pixels;
+2196,2201c2195,2200
+< 	if (TYPE(arg5) != T_STRING)
+< 	    rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(arg5));
+< 	if (RSTRING(arg5)->len < width * height * glformat_size(format) * gltype_size(type) / 8)
+< 	    rb_raise(rb_eArgError, "string length:%d", RSTRING(arg5)->len);
+< 	pixels = RSTRING(arg5)->ptr;
+< 	glDrawPixels(width,height,format,type,pixels);
+---
+>       if (TYPE(arg5) != T_STRING)
+>         rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(arg5));
+>       if (RSTRING_LEN(arg5) < width * height * glformat_size(format) * gltype_size(type) / 8)
+>         rb_raise(rb_eArgError, "string length:%d", RSTRING_LEN(arg5));
+>       pixels = RSTRING_PTR(arg5);
+>       glDrawPixels(width,height,format,type,pixels);
+2313,2316c2312,2315
+< 	coord = (GLenum)NUM2INT(arg1);
+< 	pname = (GLenum)NUM2INT(arg2);
+< 	ary2cdbl(arg3,param,4);
+< 	glTexGendv(coord,pname,param);
+---
+>       coord = (GLenum)NUM2INT(arg1);
+>       pname = (GLenum)NUM2INT(arg2);
+>       ary2cdbl(arg3,param,4);
+>       glTexGendv(coord,pname,param);
+2319c2318
+<         gl_TexGend(obj,arg1,arg2,arg3);
+---
+>       gl_TexGend(obj,arg1,arg2,arg3);
+2420,2427c2419,2426
+< 	type_size = gltype_size(type) / 8;
+< 	format_size = glformat_size(format);
+< 	if (type_size == -1 || format_size == -1)
+< 	    return Qnil;
+< 	size = type_size*format_size*height*width;
+< 	if (RSTRING(arg9)->len < size)
+< 	    rb_raise(rb_eArgError, "string length:%d",RSTRING(arg9)->len);
+<  	pixels = RSTRING(arg9)->ptr;
+---
+>       type_size = gltype_size(type) / 8;
+>       format_size = glformat_size(format);
+>       if (type_size == -1 || format_size == -1)
+>         return Qnil;
+>       size = type_size*format_size*height*width;
+>       if (RSTRING_LEN(arg9) < size)
+>         rb_raise(rb_eArgError, "string length:%d",RSTRING_LEN(arg9));
+>         pixels = RSTRING_PTR(arg9);
+2429,2434c2428,2433
+< 	type_size = gltype_size(type) / 8;
+< 	format_size = glformat_size(format);
+< 	if (type_size == -1 || format_size == -1)
+< 	    return Qnil;
+< 	size = type_size*format_size*height*width;
+<  	pixels = NULL;
+---
+>       type_size = gltype_size(type) / 8;
+>       format_size = glformat_size(format);
+>       if (type_size == -1 || format_size == -1)
+>         return Qnil;
+>       size = type_size*format_size*height*width;
+>       pixels = NULL;
+2436c2435
+< 	rb_raise(rb_eTypeError, "type mismatch:%s",rb_class2name(arg9));
+---
+>       rb_raise(rb_eTypeError, "type mismatch:%s",rb_class2name(arg9));
+2438c2437
+< 		 format,type,pixels);
+---
+>       format,type,pixels);
+2689c2688
+<     RArray* ary;
+---
+>     VALUE ary;
+2693,2696c2692,2695
+< 	ary = RARRAY(arg2);
+< 	for(i = 0; i < ary->len && i < 4; i++){
+< 	    params[i] = (GLint)NUM2INT(ary->ptr[i]);
+< 	}
+---
+>       ary = arg2;
+>       for(i = 0; i < RARRAY_LEN(ary) && i < 4; i++){
+>         params[i] = (GLint)NUM2INT(RARRAY_PTR(ary)[i]);
+>       }
+2699c2698
+< 	params[0] = (GLint)NUM2INT(arg2);
+---
+>       params[0] = (GLint)NUM2INT(arg2);
+2735c2734
+<     glFeedbackBuffer(size, type, (GLfloat*)RSTRING(g_current_feed_buffer)->ptr);
+---
+>     glFeedbackBuffer(size, type, (GLfloat*)RSTRING_PTR(g_current_feed_buffer));
+2750c2749
+< 	size = (GLsizei)NUM2INT(args);
+---
+>       size = (GLsizei)NUM2INT(args);
+2753c2752
+<     glSelectBuffer(size, (GLuint*)RSTRING(g_current_sel_buffer)->ptr);
+---
+>     glSelectBuffer(size, (GLuint*)RSTRING_PTR(g_current_sel_buffer));
+2830c2829
+<     gl##_func_##Pointer(size, type, stride, (const GLvoid*)RSTRING(arg4)->ptr); \
+---
+>     gl##_func_##Pointer(size, type, stride, (const GLvoid*)RSTRING_PTR(arg4)); \
+2851c2850
+<     glNormalPointer(type, stride, (const GLvoid*)RSTRING(arg3)->ptr);
+---
+>     glNormalPointer(type, stride, (const GLvoid*)RSTRING_PTR(arg3));
+2865c2864
+<     glIndexPointer(type, stride, (const GLvoid*)RSTRING(arg3)->ptr);
+---
+>     glIndexPointer(type, stride, (const GLvoid*)RSTRING_PTR(arg3));
+2877c2876
+<     glEdgeFlagPointer(stride, (const GLboolean*)RSTRING(arg2)->ptr);
+---
+>     glEdgeFlagPointer(stride, (const GLboolean*)RSTRING_PTR(arg2));
+2941c2940
+<     glDrawElements(mode, count, type, (const GLvoid*)RSTRING(arg4)->ptr);
+---
+>     glDrawElements(mode, count, type, (const GLvoid*)RSTRING_PTR(arg4));
+2953c2952
+<     glInterleavedArrays(format, stride, (const GLvoid*)RSTRING(arg3)->ptr);
+---
+>     glInterleavedArrays(format, stride, (const GLvoid*)RSTRING_PTR(arg3));
+2967c2966
+< 	rb_raise(rb_eRuntimeError, "GL.GenTexture mamory allocation");
+---
+>       rb_raise(rb_eRuntimeError, "GL.GenTexture mamory allocation");
+2971c2970
+< 	rb_ary_push((VALUE)ret, INT2NUM(textures[i]));
+---
+>       rb_ary_push((VALUE)ret, INT2NUM(textures[i]));
+2981d2979
+<     RArray *ary;
+2983,2985c2981,2982
+< 	rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(arg1));
+<     ary = RARRAY(arg1);
+<     n = ary->len;
+---
+>       rb_raise(rb_eTypeError, "type mismatch:%s", rb_class2name(arg1));
+>     n = RARRAY_LEN(arg1);
+2987c2984
+<     ary2cint((VALUE)ary,(int*)textures,0); /* OK? */
+---
+>     ary2cint(arg1,(int*)textures,0); /* OK? */
+3039,3046c3036,3043
+< 	type_size = gltype_size(type) / 8;
+< 	format_size = glformat_size(format);
+< 	if (type_size == -1 || format_size == -1)
+< 	    return Qnil;
+< 	size = type_size*format_size*height*width;
+< 	if (RSTRING(arg9)->len < size)
+< 	    rb_raise(rb_eArgError, "string length:%d",RSTRING(arg9)->len);
+<  	pixels = RSTRING(arg9)->ptr;
+---
+>       type_size = gltype_size(type) / 8;
+>       format_size = glformat_size(format);
+>       if (type_size == -1 || format_size == -1)
+>         return Qnil;
+>       size = type_size*format_size*height*width;
+>       if (RSTRING_LEN(arg9) < size)
+>         rb_raise(rb_eArgError, "string length:%d",RSTRING_LEN(arg9));
+>       pixels = RSTRING_PTR(arg9);
+3048c3045
+< 	rb_raise(rb_eTypeError, "type mismatch:%s",rb_class2name(arg9));
+---
+>       rb_raise(rb_eTypeError, "type mismatch:%s",rb_class2name(arg9));
+3050c3047
+< 		 format,type,pixels);
+---
+>       format,type,pixels);
+diff opengl-0.32g.org/rbogl.c opengl-0.32g/rbogl.c
+30c30
+<     struct RArray* ary;
+---
+>     VALUE ary;
+32c32
+<     ary = RARRAY(rb_Array(arg));
+---
+>     ary = rb_Array(arg);
+34c34
+< 	maxlen = ary->len;
+---
+>       maxlen = RARRAY_LEN(ary);
+36c36
+< 	maxlen = maxlen < ary->len ? maxlen : ary->len;
+---
+>       maxlen = maxlen < RARRAY_LEN(ary) ? maxlen : RARRAY_LEN(ary);
+38,39c38,39
+< 	entry = rb_ary_entry((VALUE)ary,i);
+< 	cary[i] = NUM2INT(entry);
+---
+>       entry = rb_ary_entry(ary,i);
+>       cary[i] = NUM2INT(entry);
+51,52c51,52
+<     struct RArray* ary;
+<     ary = RARRAY(rb_Array(arg));
+---
+>     VALUE ary;
+>     ary = rb_Array(arg);
+54c54
+< 	maxlen = ary->len;
+---
+>       maxlen = RARRAY_LEN(ary);
+56c56
+< 	maxlen = maxlen < ary->len ? maxlen : ary->len;
+---
+>       maxlen = maxlen < RARRAY_LEN(ary) ? maxlen : RARRAY_LEN(ary);
+58c58
+< 	cary[i] = (float)NUM2DBL(rb_ary_entry((VALUE)ary,i));
+---
+>       cary[i] = (float)NUM2DBL(rb_ary_entry(ary,i));
+69,70c69,70
+<     struct RArray* ary;
+<     ary = RARRAY(rb_Array(arg));
+---
+>     VALUE ary;
+>     ary = rb_Array(arg);
+72c72
+< 	maxlen = ary->len;
+---
+>       maxlen = RARRAY_LEN(ary);
+74c74
+< 	maxlen = maxlen < ary->len ? maxlen : ary->len;
+---
+>       maxlen = maxlen < RARRAY_LEN(ary) ? maxlen : RARRAY_LEN(ary);
+76c76
+< 	cary[i] = NUM2DBL(rb_ary_entry((VALUE)ary,i));
+---
+>       cary[i] = NUM2DBL(rb_ary_entry(ary,i));
+85c85
+<     struct RArray* tmp_ary;
+---
+>     VALUE tmp_ary;
+87,92c87,92
+<     tmp_ary = RARRAY(rb_Array(src));
+<     for (i = 0; i < tmp_ary->len; i++) {
+< 	if (TYPE(tmp_ary->ptr[i]) == T_ARRAY)
+< 	    mary2ary((VALUE)tmp_ary, ary);
+<         else
+< 	    rb_ary_push(ary, tmp_ary->ptr[i]);
+---
+>     tmp_ary = rb_Array(src);
+>     for (i = 0; i < RARRAY_LEN(tmp_ary); i++) {
+>       if (TYPE(RARRAY_PTR(tmp_ary)[i]) == T_ARRAY)
+>         mary2ary(tmp_ary, ary);
+>       else
+>         rb_ary_push(ary, RARRAY_PTR(tmp_ary)[i]);
+102c102
+<     RArray *ary_r,*ary_c;
+---
+>     VALUE ary_r,ary_c;
+104,106c104,106
+<     ary_c = RARRAY(rb_Array(ary));
+<     if (TYPE(ary_c->ptr[0]) != T_ARRAY)
+< 	ary2cdbl((VALUE)ary_c, cary, 16);
+---
+>     ary_c = rb_Array(ary);
+>     if (TYPE(RARRAY_PTR(ary_c)[0]) != T_ARRAY)
+>       ary2cdbl(ary_c, cary, 16);
+108,112c108,112
+< 	for (i = 0; i < ary_c->len && i < 4; i++) {
+< 	    ary_r = RARRAY(rb_Array(ary_c->ptr[i]));
+< 	    for(j = 0; j < ary_r->len && j < 4; j++)
+< 		cary[i*4+j] = (GLdouble)NUM2DBL(ary_r->ptr[j]);
+< 	}
+---
+>       for (i = 0; i < RARRAY_LEN(ary_c) && i < 4; i++) {
+>         ary_r = rb_Array(RARRAY_PTR(ary_c)[i]);
+>         for(j = 0; j < RARRAY_LEN(ary_r) && j < 4; j++)
+>           cary[i*4+j] = (GLdouble)NUM2DBL(RARRAY_PTR(ary_r)[j]);
+>       }
+Common subdirectories: opengl-0.32g.org/sample and opengl-0.32g/sample
