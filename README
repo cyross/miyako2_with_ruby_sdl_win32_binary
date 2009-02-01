@@ -5,13 +5,15 @@ Miyako + Ruby/SDL for Ruby1.9.1 Win32 binary
 
 【 注意事項  】
 
-本パッケージは、Windows上で動作するRuby1.9.1(MinGW版、ActiveRuby)対応のRuby/SDLバイナリとMiyakoを同梱しています。
+本パッケージは、Windows上で動作するRuby1.9.1(MinGW版、ActiveRuby)でビルドしたRuby/SDLバイナリ(2.0.1b)とMiyako(2.0)を同梱しています。
 インストールは、まず、Ruby/SDLをインストール(install_rubysdl.rbを実行)してから、Miyakoをインストール(install_miyako.rbを実行)します。
 
 添付のサンプル等で動作確認してみて下さい。
 
 Miyako、Ruby/SDLのライセンスは、それぞれのライセンスに従って下さい(ちなみに、両方ともLGPL2.1です)。
 
+但し、後に正式なRuby1.9.1対応版Ruby/SDLソースがリリースされることも考えられますので、Ruby/SDLのバイナリについては、「とりあえず動くバージョン」としてお考え下さい。
+
 最後に、これらは十分な動作確認はしておりませんので(特に、opengl.so周り)、動作中に起こった問題は自己責任でお願いします。
 
-2009.1.18 Cyross Makoto
+2009.2.1 Cyross Makoto
