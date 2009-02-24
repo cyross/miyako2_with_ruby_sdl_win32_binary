@@ -2450,7 +2450,12 @@ static VALUE render_auto_render_array(VALUE array)
   for(i=0; i<len; i++)
   {
     VALUE v = *ptr;
-    if(TYPE(v) == T_ARRAY)
+    if(v == Qnil)
+    {
+      ptr++;
+      continue;
+    }
+    else if(TYPE(v) == T_ARRAY)
     {
       render_auto_render_array(v);
     }
