@@ -221,6 +221,7 @@ class MainScene
     ws = Sprite.new(:file=>"wait_cursor.png", :type=>:ac)
     ws.oh = ws.ow
     ws = SpriteAnimation.new(:sprite=>ws, :wait=>0.2, :pattern_list=>[0,1,2,3,2,1])
+		@ws = ws
     cs = Sprite.new(:file=>"cursor.png", :type=>:ac)
     cs.oh = cs.ow
     cs = SpriteAnimation.new(:sprite=>cs, :wait=>0.2, :pattern_list=>[0,1,2,3,2,1])

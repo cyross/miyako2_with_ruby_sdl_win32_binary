@@ -18,6 +18,7 @@ loop do
   while event = SDL::Event2.poll
     case event
     when SDL::Event2::KeyDown, SDL::Event2::Quit
+      font.close
       exit
     end
   end

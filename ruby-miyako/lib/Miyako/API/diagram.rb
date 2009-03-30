@@ -65,12 +65,14 @@ module Miyako
       #===ノードでの入力デバイス処理を実装する
       #入力デバイス処理が必要ないときは、本メソッドを実装する必要はない
       #Processor#update_input メソッドが呼ばれたときの処理を実装する
-      def update_input
+      #_params_:: Processor::update_inputメソッドが呼ばれた時のパラメータ群。オーバーライドするときに省略可能
+      def update_input(*params)
       end
     
       #===ノードでの更新処理を実装する
       #Processor#update メソッドが呼ばれたときの処理を実装する
-      def update
+      #_params_:: Processor::updateメソッドが呼ばれた時のパラメータ群。オーバーライドするときに省略可能
+      def update(*params)
       end
 
       #===ノードでの入力デバイス処理の後始末を実装する
@@ -186,9 +188,9 @@ module Miyako
     end
 
     #==遷移図クラス本体
-    #但し、実質的にメソッドを呼び出すのはDiagramFacadeクラスから呼び出す
+    #但し、実質的にメソッドを呼び出すのはManagerクラスから呼び出す
     class DiagramBody
-      attr_reader :name #:nodoc:
+      attr_reader :name, :node #:nodoc:
       TRIGGER_TYPES=[:immediate, :next]
 
       def initialize(name, body, trigger = nil) #:nodoc:
@@ -221,13 +223,13 @@ module Miyako
         @node.resume
       end
 
-      def update_input #:nodoc:
-        @node.update_input
+      def update_input(*params) #:nodoc:
+        @node.update_input(*params)
       end
     
-      def update #:nodoc:
+      def update(*params) #:nodoc:
         if @trigger.update?
-          @node.update
+          @node.update(*params)
           @trigger.post_update
           @node.reset_input
           if @next_trigger
@@ -299,6 +301,8 @@ module Miyako
       end
 
       #===遷移図にノードを追加する
+      #状態遷移図のノードに対応するオブジェクト(NodeBaseモジュールをmixinしたクラス)を登録する
+      #名前が重複している場合は、後に登録したノードが採用される。
       #_name_:: ノード名。文字列かシンボルを使用
       #_body_:: ノード本体。DiagramNodeBase モジュールを mixin したクラスのインスタンス
       #_trigger_:: NodeTriggerBase モジュールを mixin したクラスのインスタンス。デフォルトは NpdeTrogger クラスのインスタンス
@@ -310,8 +314,15 @@ module Miyako
       end
 
       #===ノード間移動のアローを追加する
-      #trigger のブロックを実行した結果、true のときは、to_name で示したノードへ移動する。
-      #false のときは、ノード間移動をせずに直前に実行したノードを再実行する
+      #移動元ノードと移動先ノードの名前を指定し、条件にかなえばノードを移動する矢印を設定する。
+      #Processor#updateメソッドを呼び出した時、移動条件を確認して移動するかどうかを判断する。
+      #デフォルトでは、ノードのfinish?メソッドがtrueのときにto_nameで示したノードへ移動する。
+      #結果がfalse のときは、from_nameで示したノードを継続して使用する(stopメソッドは呼ばれない)。
+      #また、引数が一つのブロックを渡すことができる。
+      #引数には、現在評価中のノード(from_nameで示したノードのインスタンス)が渡される。
+      #評価の結果、true のときは、to_name で示したノードへ移動する。
+      #結果がfalse のときは、from_nameで示したノードを継続して使用する(stopメソッドは呼ばれない)。
+      #同じ移動元のアローが複数登録されているときは、先に登録したノードの移動条件を確認する。
       #_from_name_:: 移動元ノード名。文字列かシンボルを使用
       #_to_name_:: 移動先ノード名。文字列かシンボルを使用
       #_trigger_:: ノード間移動するかどうかを返すブロック。ブロックは引数を一つ取る(from_name で示したノードのインスタンス)
@@ -345,14 +356,18 @@ module Miyako
         @ptr = @first
       end
 
-      def now #:nodoc
+      def now #:nodoc:
         return @ptr ? @ptr.name : nil
       end
 
-      def now_node #:nodoc
-        return @ptr
+      def now_node #:nodoc:
+        return @ptr ? @ptr.node : nil
       end
 
+      def nodes
+        return @name2idx.keys
+      end
+      
       def start #:nodoc:
         @ptr = @first unless @ptr
         return unless @ptr
@@ -374,13 +389,13 @@ module Miyako
         @ptr.resume if @ptr
       end
 
-      def update_input #:nodoc:
-        @ptr.update_input if @ptr
+      def update_input(*params) #:nodoc:
+        @ptr.update_input(*params) if @ptr
       end
     
-      def update #:nodoc:
+      def update(*params) #:nodoc:
         return unless @ptr
-        @ptr.update
+        @ptr.update(*params)
         nxt = @ptr.go_next
         unless @ptr.equal?(nxt)
           @ptr.stop
@@ -475,16 +490,18 @@ module Miyako
 
       #===入力デバイスに関わる処理を行う
       #現在処理中のノードのupdate_inputメソッドを呼び出す。
-      def update_input
+      #_params_:: パラメータ群。省略可能
+      def update_input(*params)
         return if @states[:pause]
-        @diagram.update_input
+        @diagram.update_input(*params)
       end
     
       #===処理の更新を行う
       #現在処理中のノードupdateメソッドを呼び出す。
-      def update
+      #_params_:: パラメータ群。省略可能
+      def update(*params)
         return if @states[:pause]
-        @diagram.update
+        @diagram.update(*params)
         @states[:execute] = false if @diagram.finish?
       end
     
@@ -532,6 +549,12 @@ module Miyako
       #返却値:: ノードのインスタンス
       def now_node
         return @diagram.now_node
+      end
+
+      #===登録しているノード名のリストを取得する
+      #返却値:: ノード名リスト
+      def nodes
+        return @diagram.nodes
       end
     end
   end

@@ -1,6 +1,11 @@
 
+<<<<<<< README.en.win32
 Ruby/SDL 2.0 Win32's binary
 Cyross Makoto
+=======
+Ruby/SDL 2.1.0 Win32's binary
+Ohbayashi Ippei
+>>>>>>> 1.1.2.8
 
 1 What's Ruby/SDL?
 
