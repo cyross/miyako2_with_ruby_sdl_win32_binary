@@ -3,13 +3,13 @@
 class MapManager
   extend Forwardable
 
-  attr_reader :collision
+  attr_reader :mapchip
   
   def initialize
     @moving = false
 
     #マップチップインスタンスの作成
-    @mp = MapChipFactory.load("./mapchip.csv")
+    @mapchip = MapChipFactory.load("./mapchip.csv")
 
     #イベントを登録
     em = MapEventManager.new
@@ -19,11 +19,7 @@ class MapManager
        add(16, EventOasis)
 
     #マップの作成
-    @map = Map.new(@mp, "./map_layer.csv", em)
-
-    #実座標をコリジョン設定
-    @collision = Collision.new(Rect.new(0, 0, @mp.chip_size[0], @mp.chip_size[1]),
-                               Point.new(0, 0))
+    @map = Map.new(@mapchip, "./map_layer.csv", em)
 
     #海のマップチップを波がアニメーションする画像に置き換え
     @sp = Sprite.new(:file=>"sea.png", :type=>:as)
@@ -32,29 +28,14 @@ class MapManager
     @map.set_mapchip_base(0, 3, @ar)
   end
 
-  def margin
-    return @map.margin
-  end
-  
-  def size
-    return @mp.chip_size
-  end
-
   def move(dx, dy)
     @map.move(dx, dy)
-    @map.events.each{|e| e.move(dx, dy) }
-    @collision.move(dx, dy)
+    @map.events[0].each{|e| e.move(dx, dy) }
   end
   
   def move_to(x, y)
-    @map.events.each{|e| e.move(x-@map.pos.x, y-@map.pos.y) }
-    @collision.move_to(x, y)
+    @map.events[0].each{|e| e.move(x-@map.pos.x, y-@map.pos.y) }
     @map.move_to(x, y)
-  end
-
-  def sync_margin
-    @map.sync_margin
-    @map.events.each{|e| e.margin.resize(*@map.margin) }
   end
   
   def start
@@ -63,7 +44,7 @@ class MapManager
   
   def update
     @ar.update_animation
-    @map.events.each{|e| e.update(@map, @map.events, nil) }
+    @map.events[0].each{|e| e.update(@map, @map.events, nil) }
   end
   
   def render
@@ -71,11 +52,11 @@ class MapManager
   end
 
   def render_event
-    @map.events.each{|e| e.render }
+    @map.events[0].each{|e| e.render }
   end
 
   def render_event_box
-    @map.events.each{|e| e.render_box }
+    @map.events[0].each{|e| e.render_box }
   end
 
   def stop
@@ -88,6 +69,7 @@ class MapManager
     @sp.dispose
   end
     
-  def_delegators(:@map, :w, :h, :get_code, :get_code_real)
-  def_delegators(:@map, :get_amount, :events)
+  def_delegators(:@map, :w, :h, :get_code, :get_code_real, :margin, :mapchips, :[])
+  def_delegators(:@map, :collision?, :meet?, :cover?, :events)
+  def_delegators(:@mapchip, :collision_table, :access_table)
 end

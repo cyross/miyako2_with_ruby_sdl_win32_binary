@@ -1,11 +1,6 @@
-
-<<<<<<< README.en.win32
-Ruby/SDL 2.0 Win32's binary
-Cyross Makoto
-=======
 Ruby/SDL 2.1.0 Win32's binary
 Ohbayashi Ippei
->>>>>>> 1.1.2.8
+Cyross Makoto
 
 1 What's Ruby/SDL?
 
@@ -60,7 +55,7 @@ Yoshiyuki Kusano hase opengl.so's copyright.
 Perhaps you cannot use hardware surface.
 
 7 Version information
-Ruby 1.8.6-p114
+Ruby 1.9.1-p0
 SDL 1.2.13
 SDL_image 1.2.6
 SDL_ttf 2.0.9

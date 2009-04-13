@@ -37,8 +37,6 @@ module Miyako
 
   #=マップチップ定義構造体
   MapChip = MapChipStruct.new(:chip_image, :chips, :size, :chip_size, :access_types, :collision_table, :access_table)
-  #=Map用コリジョン構造体
-  MapMoveAmount = Struct.new(:collisions, :amount)
 
   #=マップチップ作成ファクトリクラス
   class MapChipFactory
@@ -55,12 +53,62 @@ module Miyako
       chips = size.w * size.h
       access_types = lines.shift[0].to_i
       collision_table = Array.new(access_types){|at|
-        Array.new(chips){|n| Collision.new(lines.shift.map{|s| s.to_i}, Point.new(0, 0)) }
+        Array.new(chips){|n| Collision.new(lines.shift.map{|s| s.to_i}) }
       }
       access_table = Array.new(access_types){|at|
-        Array.new(chips){|n| lines.shift.map{|s| s.to_i} << 0 }
+        Array.new(chips){|n|
+          lines.shift.map{|s|
+            v = eval(s)
+            next v if (v == true || v == false)
+            v = v.to_i
+            next false if v == 0
+            true
+          }
+        }
       }
       return MapChip.new(spr, chips, size, chip_size, access_types, collision_table, access_table)
+    end
+  end
+  
+  #==アクセス方向定義クラス
+  #マップチップのアクセステーブルを参照する際に、状態(入る(:in)・出る(:out))と
+  #方向(:left, :right, :up, :down)から、アクセステーブルの指標を取得する必要がある。
+  #このクラスでは、その指標を取得するメソッドを用意している
+  class AccessIndex
+    @@accesses = {
+      in:  { right: 2, left: 4, up: 6, down: 0},
+      out: { right: 3, left: 5, up: 1, down: 7}
+    }
+    @@accesses2 = {
+      in:  [[-1,0,6],[2,-1,-1],[4,-1,-1]],
+      out: [[-1,7,1],[3,-1,-1],[5,-1,-1]]
+    }
+
+    #===状態と方向からアクセステーブルの指標を取得する
+    #アクセステーブルには、2種類の状態(入る=:in, 出る=:out)と、
+    #4種類の方向(左=:left, 右=:right, 上=:up, 下=:down)から構成される
+    #配列となっている。本メソッドで、状態・方向に対応するシンボルから配列の要素指標を取得する。
+    #指定外のシンボルを渡すと例外が発生する
+    #_state_:: 状態を示すシンボル(:in, :out)
+    #_direction_:: 方向を示すシンボル(:left, :right, :up, :down)
+    #返却値:: アクセステーブルの指標番号(整数)
+    def AccessIndex.index(state, direction)
+      raise MiyakoError, "can't find AcceessIndex state symbol! #{state}" unless @@accesses.has_key?(state)
+      raise MiyakoError, "can't find AcceessIndex direction symbol! #{direction}" unless @@accesses[state].has_key?(direction)
+      return @@accesses[state][direction]
+    end
+
+    #===状態と移動量からアクセステーブルの指標を取得する
+    #アクセステーブルには、2種類の状態(入る=:in, 出る=:out)と、移動量(dx,dy)から構成される
+    #配列となっている。本メソッドで、状態に対応するシンボル、整数から配列の要素指標を取得する。
+    #指定外のシンボルを渡すと例外が発生する
+    #_state_:: 状態を示すシンボル(:in, :out)
+    #_dx_:: x方向移動量
+    #_dy_:: y方向移動量
+    #返却値:: アクセステーブルの指標番号(整数)。何も移動しない場合は-1が返る
+    def AccessIndex.index2(state, dx, dy)
+      raise MiyakoError, "can't find AcceessIndex state symbol! #{state}" unless @@accesses.has_key?(state)
+      return @@accesses2[state][dx < -1 ? -1 : dx > 1 ? 1 : 0][dy < -1 ? -1 : dy > 1 ? 1 : 0]
     end
   end
 
@@ -70,13 +118,13 @@ module Miyako
     @@idx_iy = [-1, 0, 6]
 
     attr_accessor :visible #レンダリングの可否(true->描画 false->非描画)
-    attr_reader :map_layers, :pos, :margin, :size, :w, :h
+    attr_reader :map_layers, :mapchips, :pos, :size, :w, :h
 
     class MapLayer #:nodoc: all
       extend Forwardable
 
       attr_accessor :visible #レンダリングの可否(true->描画 false->非描画)
-      attr_reader :mapchip_units, :pos, :margin, :size
+      attr_reader :mapchip, :mapchip_units, :pos, :size
 
       def round(v, max) #:nodoc:
         v = max + (v % max) if v < 0
@@ -92,7 +140,6 @@ module Miyako
       def initialize(mapchip, mapdat, layer_size) #:nodoc:
         @mapchip = mapchip
         @pos = Point.new(0, 0)
-        @margin = Size.new(0, 0)
         @size = layer_size.dup
         @ow = @mapchip.chip_size.w
         @oh = @mapchip.chip_size.h
@@ -141,9 +188,93 @@ module Miyako
                          @modpy2[round(y, @size.h)])
       end
 
-      def get_code(x, y) #:nodoc:
-        pos = convert_position(x, y)
+      #===実座標を使用して、指定のレイヤー・位置のマップチップ番号を取得
+      #イベントレイヤーでの番号はイベント番号と一致する
+      #_x_:: マップチップ単位での位置(ピクセル単位)
+      #_y_:: マップチップ単位での位置(ピクセル単位）
+      #返却値:: マップチップ番号(マップチップが設定されている時は0以上の整数、設定されていない場合は-1が返る)
+      def get_code(x, y)
+        pos = convert_position(x / @mapchip.chip_size[0], y / @mapchip.chip_size[1])
         return @mapdat[pos.y][pos.x]
+      end
+
+      #===指定の矩形のキャラクタに掛かるマップチップの左上位置の組み合わせを返す
+      #但し、引数には、Rect(x,y,w,h)形式のインスタンスを渡す
+      #_rect_:: キャラクタの矩形
+      #返却値:: マップチップ左上位置の配列(キャラクタに掛かる位置の組み合わせ)
+      def product_position(rect)
+        return Utility.product_position(rect, @mapchip.chip_size)
+      end
+
+      #===指定の矩形のキャラクタに掛かるマップチップの左上位置の組み合わせを返す
+      #但し、引数には、Square([x1,y1,x2,y2])形式のインスタンスを渡す
+      #_square_:: キャラクタの矩形
+      #返却値:: マップチップ左上位置の配列(キャラクタに掛かる位置の組み合わせ)
+      def product_position_by_square(square)
+        return Utility.product_position_by_square(square, @mapchip.chip_size)
+      end
+
+      #===キャラクタとマップチップが重なっているかどうか問い合わせる
+      #指定の矩形のキャラクタが、指定の位置のマップチップのコリジョンと重なっているかどうか問い合わせる
+      #引数は、Rect(x,y,w,h)形式(Rect構造体、[x,y,w,h]の配列)で渡す
+      #指定の位置のマップチップ番号が-1(未定義)のときはnilを返す
+      #_type_:: 移動形式(0以上の整数)
+      #_pos_:: 調査対象のマップチップの位置
+      #_collision_:: キャラクタのコリジョン
+      #_rect_:: キャラクタの矩形
+      #返却値:: コリジョンが重なっていれば、そのときのマップチップ番号を返す。重なっていなければnilを返す
+      def collision?(type, pos, collision, rect)
+        code = get_code(*pos.to_a)
+        return nil if code == -1
+        return @mapchip.collision_table[type][code].collision?(pos, collision, rect) ? code : nil
+      end
+
+      #===キャラクタとマップチップが隣り合っているかどうか問い合わせる
+      #指定の矩形のキャラクタが、指定の位置のマップチップのコリジョンと隣り合っているかどうか問い合わせる
+      #引数は、Rect(x,y,w,h)形式(Rect構造体、[x,y,w,h]の配列)で渡す
+      #指定の位置のマップチップ番号が-1(未定義)のときはnilを返す
+      #_type_:: 移動形式(0以上の整数)
+      #_pos_:: 調査対象のマップチップの位置
+      #_collision_:: キャラクタのコリジョン
+      #_rect_:: キャラクタの矩形
+      #返却値:: コリジョンが隣り合っていれば、そのときのマップチップ番号を返す。隣り合っていなければnilを返す
+      def meet?(type, pos, collision, rect)
+        code = get_code(*pos.to_a)
+        return nil if code == -1
+        return @mapchip.collision_table[type][code].meet?(pos, collision, rect) ? code : nil
+      end
+
+      #===キャラクタとマップチップが覆い被さっているかどうか問い合わせる
+      #指定の矩形のキャラクタが、指定の位置のマップチップのコリジョンを覆い被さっているかどうか問い合わせる
+      #引数は、Rect(x,y,w,h)形式(Rect構造体、[x,y,w,h]の配列)で渡す
+      #指定の位置のマップチップ番号が-1(未定義)のときはnilを返す
+      #_type_:: 移動形式(0以上の整数)
+      #_pos_:: 調査対象のマップチップの位置
+      #_collision_:: キャラクタのコリジョン
+      #_rect_:: キャラクタの矩形
+      #返却値:: どちらかのコリジョンが覆い被さっていれば、そのときのマップチップ番号を返す。
+      #被さっていなければnilを返す
+      def cover?(type, pos, collision, rect)
+        code = get_code(*pos.to_a)
+        return nil if code == -1
+        return @mapchip.collision_table[type][code].cover?(pos, collision, rect) ? code : nil
+      end
+
+      #===キャラクタとマップチップが重なっているかどうか問い合わせる
+      #指定の位置と方向で、指定の位置のマップチップ上で移動できるかどうか問い合わせる
+      #指定の位置のマップチップ番号が-1(未定義)のとき、移動していない(dx==0 and dy==0)ときはtrueを返す
+      #_type_:: 移動形式(0以上の整数)
+      #_inout_:: 入退形式(:in もしくは :out)
+      #_pos_:: 調査対象のマップチップの位置
+      #_dx_:: 移動量(x座標)
+      #_dy_:: 移動量(y座標)
+      #返却値:: 移動可能ならばtrueを返す
+      def can_access?(type, inout, pos, dx, dy)
+        code = get_code(pos[0]+dx, pos[1]+dy)
+        return true if code == -1
+        index = AccessIndex.index2(inout, dx, dy)
+        return true if index == -1
+        return @mapchip.access_table[type][code][index]
       end
 
       def dispose #:nodoc:
@@ -184,13 +315,12 @@ module Miyako
     #_event_manager_:: MapEventManagerクラスのインスタンス
     #返却値:: 生成したインスタンス
     def initialize(mapchips, layer_csv, event_manager)
+      @event_layers = []
       @em = event_manager.dup
       @em.set(self)
       @mapchips = mapchips.to_a
       @visible = true
       @pos = Point.new(0, 0)
-      @margin = Size.new(0, 0)
-      @coll = Collision.new(Rect.new(0, 0, 0, 0), Point.new(0, 0))
       layer_data = CSV.readlines(layer_csv)
       raise MiyakoError, "This file is not Miyako Map Layer file! : #{layer_csv}" unless layer_data.shift[0] == "Miyako Maplayer"
 
@@ -202,52 +332,50 @@ module Miyako
       
       layers = layer_data.shift[0].to_i
       
-      brlist = {}
+      evlist = []
+      brlist = []
       layers.times{|n|
         name = layer_data.shift[0]
-        if name == "<event>"
-          name = :event
-        else
-          name = /\<(\d+)\>/.match(name).to_a[1].to_i
-        end
         values = []
         @size.h.times{|y|
           values << layer_data.shift.map{|m| m.to_i}
         }
-        brlist[name] = values
+        if name == "<event>"
+          evlist << values
+        else
+          brlist << values
+        end
       }
 
-      @map_layers = Array.new
-      @event_layer = nil
-
-      if brlist.has_key?(:event)
-        @event_layer = Array.new
-        brlist[:event].each_with_index{|ly, y|
+      evlist.each{|events|
+        event_layer = Array.new
+        events.each_with_index{|ly, y|
           ly.each_with_index{|code, x|
             next unless @em.include?(code)
-            @event_layer.push(@em.create(code, x * @mapchips.first.chip_size.w, y * @mapchips.first.chip_size.h))
+            event_layer.push(@em.create(code, x * @mapchips.first.chip_size.w, y * @mapchips.first.chip_size.h))
           }
         }
-        layers -= 1
-      end
+        @event_layers << event_layer
+      }
 
       mc = @mapchips.cycle
       @mapchips = mc.take(layers)
       @map_layers = []
-      layers.times{|i|
-        br = brlist[i].map{|b| b.map{|bb| bb >= @mapchips.first.chips ? -1 : bb } }
+      brlist.each{|br|
+        br = br.map{|b| b.map{|bb| bb >= @mapchips.first.chips ? -1 : bb } }
         @map_layers.push(MapLayer.new(mc.next, br, @size))
       }
     end
 
     #===マップにイベントを追加する
+    #_idx_:: 追加するイベントレイヤの指標
     #_code_:: イベント番号(Map.newメソッドで渡したイベント番号に対応)
     #_x_:: マップ上の位置(x方向)
     #_y_:: マップ常温位置(y方向)
     #返却値:: 自分自身を返す
-    def add_event(code, x, y)
+    def add_event(idx, code, x, y)
       return self unless @em.include?(code)
-      @event_layer.push(@em.create(code, x, y))
+      @event_layers[idx].push(@em.create(code, x, y))
       return self
     end
 
@@ -307,14 +435,6 @@ module Miyako
     #===設定したマージンを各レイヤーに同期させる
     #マージンを設定した後は必ずこのメソッドを呼び出すこと
     #返却値:: 自分自身を返す
-    def sync_margin
-      @map_layers.each{|l| l.margin.resize(*@margin) }
-      return self
-    end
-
-    #===設定したマージンを各レイヤーに同期させる
-    #マージンを設定した後は必ずこのメソッドを呼び出すこと
-    #返却値:: 自分自身を返す
     def [](idx)
       return @map_layers[idx]
     end
@@ -325,19 +445,6 @@ module Miyako
     #_idx_:: マップレイヤー配列のインデックス
     #_x_:: マップチップ単位での位置(ピクセル単位)
     #_y_:: マップチップ単位での位置(ピクセル単位）
-    #返却値:: マップチップ番号(マップチップが設定されている時は0以上の整数、設定されていない場合は-1が返る)
-    def get_code_real(idx, x = 0, y = 0)
-      code = @map_layers[idx].get_code(x / @mapchips.first.chip_size[0], y / @mapchips.first.chip_size[1])
-      yield code if block_given?
-      return code
-    end
-
-    #===指定のレイヤー・位置のマップチップ番号を取得
-    #イベントレイヤーでの番号はイベント番号と一致する
-    #ブロックを渡すと、求めたマップチップ番号をブロック引数として受け取る評価を行える
-    #_idx_:: マップレイヤー配列のインデックス
-    #_x_:: マップチップ単位での位置(ピクセル単位ではない)
-    #_y_:: マップチップ単位での位置(ピクセル単位ではない)
     #返却値:: マップチップ番号(マップチップが設定されている時は0以上の整数、設定されていない場合は-1が返る)
     def get_code(idx, x = 0, y = 0)
       code = @map_layers[idx].get_code(x, y)
@@ -354,136 +461,6 @@ module Miyako
       @map_layers[idx].mapchip_units[code] = base
       return self
     end
-
-    #===現在の位置が当たり判定に当たっているかどうかを問い合わせる
-    #本メソッドでは、以下の情報をもとに移動量を取得する
-    #レイヤー番号：第１引数(０以上の整数)
-    #移動形式：第２引数(０以上の整数)
-    #キャラクタの大きさ(pixel)：第３引数(Size構造体)
-    #マップチップの大きさ(pixel)：Mapインスタンス生成時に設定したMapChipインスタンス
-    #マップ上の位置：Mapインスタンス
-    #キャラクタの当たり判定：第４引数(Collisionクラスインスタンス)
-    #_layer_:: レイヤー番号(０以上の整数)
-    #_type_:: 移動形式(０以上の整数)
-    #_size_:: キャラクタの大きさ
-    #_collision_:: キャラクタのコリジョン情報(Collosionクラス)
-    #返却値:: マップチップの当たり判定に当たっていればtrueを返す
-    def collision?(layer, type, size, collision)
-      mc = @mapchips[layer]
-      mlayer = @map_layers[layer]
-      flag = false
-      collision.move_to(*@pos.to_a[0..1]){
-        px1, px2 = @pos[0] / mc.chip_size[0], (@pos[0]+size[0]-1) / mc.chip_size[0]
-        py1, py2 = @pos[1] / mc.chip_size[1], (@pos[1]+size[1]-1) / mc.chip_size[1]
-        (py1..py2).each{|py|
-          rpy = py * mc.chip_size[1]
-          (px1..px2).each{|px|
-            rpx = px * mc.chip_size[0]
-            code = mlayer.get_code(px, py)
-            next if code == -1 # not use chip
-            @coll = mc.collision_table[type][code]
-            @coll.pos.move_to(rpx, rpy){
-              atable = mc.access_table[type][code]
-              flag |= @coll.collision?(collision)
-            }
-          }
-        }
-      }
-      return flag
-    end
-
-    #===現在の位置、指定の大きさから、移動する方向・移動量・マップの移動許可などをもとに、最終的な移動量を求める
-    #本メソッドでは、以下の情報をもとに移動量を取得する
-    #レイヤー番号：第１引数(Size構造体)
-    #移動形式：第２引数(０以上の整数)
-    #マップの大きさ(pixel)：第３引数(Size構造体)
-    #マップチップの大きさ(pixel)：Mapインスタンス生成時に設定したMapChipインスタンス
-    #マップ上の位置：Mapインスタンス
-    #キャラクタの当たり判定、移動量：第４引数(Collisionクラスインスタンス)
-    #移動量・キャラクタの
-    #_layer_:: レイヤー番号(０以上の整数)
-    #_type_:: 移動形式(０以上の整数)
-    #_size_:: キャラクタの大きさ
-    #_collision_:: 移動するキャラクタのコリジョン情報(Collosionクラス)
-    #返却値:: 許容できる移動量(MapMoveAmount構造体)
-    def get_amount(layer, type, size, collision)
-      mma = MapMoveAmount.new([], collision.direction.dup)
-      return mma if(mma.amount[0] == 0 && mma.amount[1] == 0)
-      mc = @mapchips[layer]
-      mlayer = @map_layers[layer]
-      collision.move_to(*@pos.to_a[0..1]){
-        dx, dy = collision.direction[0]*collision.amount[0], collision.direction[1]*collision.amount[1]
-        px1, px2 = (@pos[0]+dx) / mc.chip_size[0], (@pos[0]+size[0]-1+dx) / mc.chip_size[0]
-        py1, py2 = (@pos[1]+dy) / mc.chip_size[1], (@pos[1]+size[1]-1+dy) / mc.chip_size[1]
-        (py1..py2).each{|py|
-          rpy = py * mc.chip_size[1]
-          (px1..px2).each{|px|
-            rpx = px * mc.chip_size[0]
-            code = mlayer.get_code(px, py)
-            next if code == -1 # not use chip
-            @coll = mc.collision_table[type][code]
-            @coll.pos.move_to(rpx, rpy){
-              atable = mc.access_table[type][code]
-              if @coll.into?(collision)
-                mma.amount[0] = mma.amount[0] & atable[@@idx_ix[collision.direction[0]]]
-                mma.amount[1] = mma.amount[1] & atable[@@idx_iy[collision.direction[1]]]
-                mma.collisions << [layer, code, :into]
-              end
-            }
-          }
-        }
-      }
-      mma.amount[0] *= collision.amount[0]
-      mma.amount[1] *= collision.amount[1]
-      yield mma if block_given?
-      return mma
-    end
-
-    #===現在の位置、指定の大きさから、移動する方向・移動量・マップの移動許可などをもとに、最終的な移動量を求める
-    #本メソッドでは、以下の情報をもとに移動量を取得する
-    #レイヤー番号：第１引数(Size構造体)
-    #移動形式：第２引数(０以上の整数)
-    #キャラクタの位置(マップ上位置とは独立)、キャラクタの大きさ(pixel)：第３引数(Rect構造体)
-    #マップチップの大きさ(pixel)：Mapインスタンス生成時に設定したMapChipインスタンス
-    #キャラクタの当たり判定、移動量：第４引数(Collisionクラスインスタンス)
-    #_layer_:: レイヤー番号(０以上の整数)
-    #_type_:: 移動タイプ(０以上の整数)
-    #_rect_:: 位置・大きさを設定したRect構造体
-    #_collision_:: 移動するキャラクタのコリジョン情報(Collosionクラス)
-    #返却値:: 許容できる移動量(MapMoveAmount構造体)
-    def get_amount_by_rect(layer, type, rect, collision)
-      mma = MapMoveAmount.new([], collision.direction.dup)
-      return mma if(mma.amount[0] == 0 && mma.amount[1] == 0)
-      mc = @mapchips[layer]
-      mlayer = @map_layers[layer]
-      dx, dy = collision.direction[0]*collision.amount[0], collision.direction[1]*collision.amount[1]
-      x, y = rect.to_a[0..1]
-      collision.pos.move_to(x, y){
-        px1, px2 = (x+dx) / mc.chip_size[0], (x+rect[2]-1+dx) / mc.chip_size[0]
-        py1, py2 = (y+dy) / mc.chip_size[1], (y+rect[3]-1+dy) / mc.chip_size[1]
-        (py1..py2).each{|py|
-          rpy = py * mc.chip_size[1]
-          (px1..px2).each{|px|
-            rpx = px * mc.chip_size[0]
-            code = mlayer.get_code(px, py)
-            next if code == -1 # not use chip
-            @coll = mc.collision_table[type][code]
-            @coll.pos.move_to(rpx, rpy){
-              atable = mc.access_table[type][code]
-              if @coll.into?(collision)
-                mma.amount[0] = mma.amount[0] & atable[@@idx_ix[collision.direction[0]]]
-                mma.amount[1] = mma.amount[1] & atable[@@idx_iy[collision.direction[1]]]
-                mma.collisions << [layer, code, :into]
-              end
-            }
-          }
-        }
-      }
-      mma.amount[0] *= collision.amount[0]
-      mma.amount[1] *= collision.amount[1]
-      yield mma if block_given?
-      return mma
-    end
     
     #===マップチップ１枚の大きさを取得する
     #マップチップの大きさが32×32ピクセルの場合は、[32,32]のSize構造体が返る
@@ -495,7 +472,7 @@ module Miyako
     #===すべてのマップイベントを終了させる
     #マップに登録しているイベントすべてのfinalメソッドを呼び出す
     def final
-      @event_layer.each{|e| e.final } if @event_layer
+      @event_layers.each{|ee| ee.each{|e| e.final }}
     end
 
     #===マップ情報を解放する
@@ -505,23 +482,21 @@ module Miyako
         l = nil
       }
       @map_layers = Array.new
-      if @event_layer
-        @event_layer.each{|e| e.dispose } 
-        @event_layer = nil
-      end
+
+      @event_layers.each{|ee|
+        ee.each{|e| e.dispose }
+        ee.clear
+      }
+      @event_layers.clear
+
       @mapchips.clear
       @mapchips = nil
-    end
-
-    def re_size #:nodoc:
-      @map_layers.each{|l| l.reSize }
-      return self
     end
 
     #===マップに登録しているイベントインスタンス(マップイベント)を取得する
     #返却値:: マップイベントの配列
     def events
-      return @event_layer || []
+      return @event_layers
     end
 
     #===マップを画面に描画する
