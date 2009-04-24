@@ -1,8 +1,8 @@
 *******************************************************************************
 【   作者名   】　サイロス誠
 【  ソフト名  】　Interactive Media Authoring System "Miyako"
-【 バージョン 】　2.0.0
-【   作成日   】　2009/4/13
+【 バージョン 】　2.0.4
+【   作成日   】　2009/4/25
 【    種別    】　フリーウェア
 【  開発言語  】　Ruby 1.9.1
 【 ランタイム 】　Ruby 1.9.1～,Ruby/SDL 2.1～,SDL
@@ -79,7 +79,7 @@ Miyakoのタイトルは、以下の事柄に由来しています
 ・ドキュメントが全然整っていない（リファレンスはまだまだ・・・）
 　→各種チュートリアルや「るびま」記事などでドキュメントを拡充する予定
 
-【 開発環境  】
+【 開発環境 】
 
 ＜メイン開発PC＞
 CPU : Core2Duo E6850
@@ -105,6 +105,11 @@ OS  : Microsoft WindowsXp SP3
 DEV : Notepad++ v5.3.1-6
       mswin32版Ruby 1.9.1-p0 + Ruby/SDL 2.1
       MinGW+MSYS(miyako_no_katanaビルド)
+
+【 動作確認環境 】
+
+上記環境に追加して、VMWarePlayer上で動作している
+Ubuntu9.04(x86)+Ruby1.9.1+Ruby/SDL2.1.0で動作確認済み
 
 【 動作環境  】
 
@@ -841,6 +846,64 @@ v2.0.0(2009.4.13)
 ・install_miyaok.rbの修正(旧バージョンのディレクトリを削除、miyako_no_katanaビルド時に環境変数SDL_CONFIG_PATHを参照する様にした)
 ・リファレンス(RDoc)の拡充
 ・他、細かいバグの修正
+
+v2.0.1(2009.4.18)
+・Choices#end_choice,choicing?,move,move_toメソッドを追加
+・Choices#end_select?,call_end_select_procメソッドを廃止(Choices#end_choiceメソッドに内包)
+・TextBox#execute,execute?,updateメソッドを追加
+・TextBox#commandメソッドのインタフェースを変更(デフォルト付き引数を２つ追加)
+・引数にspriteunitを受け取れるブロックを渡すメソッド(Bitmap.blit_and等)で、ox,oyに変更を与えるとプログラムが止まる問題を修正
+・Bitmap.inverseメソッドで正しく画像が転送されない問題を修正
+・Choicesの各メソッドで、start_choiceで選択を開始していない時にエラーが出るバグを修正
+・TextBox#create_choices_chainメソッドで、引数のto_spriteメソッドが受け持つ引数の数が0個の時の対処が行われていなかった問題を修正
+・各クラスのto_spriteメソッドで、背景が透明になっていなかった問題を修正
+・Sprite#and, or, xor, dec_alpha, dec_alpha!, black_out, black_out!, white_out, white_out!,
+　       inverse, inverse!, additive, additive!, subtraction, subtraction!,
+　       hue, hue!, saturation, saturation!, value, value!, hsv, hsv!の各メソッドに
+　ブロックを渡せるように修正(引数は、Bitmapクラスの各メソッドの内容と同じ)
+・拡張ライブラリのMSB CPU対応コードにあったコーディングミスを修正
+・サンプルblit_rop.rb、textbox_sample.rbを追加
+・ドキュメントの修正
+
+v2.0.2(2009.4.18)
+・ChoicesクラスでmixinしているLayoutモジュールの適応範囲を広げる(left,right,top,bottom,move,move_toなどを利用可能に)
+・Choices#leftメソッドをChoices#left_choiceメソッドに改名
+　(mixinしているLayoutモジュールのleftメソッドを機能させるため)
+・Choices#rightメソッドをChoices#right_choiceメソッドに改名
+　(mixinしているLayoutモジュールのrightメソッドを機能させるため)
+・Choices#upメソッドをChoices#up_choiceメソッドに改名
+　(left_choice,right_choiceメソッドとpostfixを統一させるため)
+・Choices#downメソッドをChoices#down_choiceメソッドに改名
+　(left_choice,right_choiceメソッドとpostfixを統一させるため)
+・Choices#broad_rectメソッドの内部処理を変更
+・Choices#end_select?,call_end_select_procメソッドを廃止(Choices#end_choiceメソッドに内包)
+・TextBox#execute,execute?,updateメソッドを追加
+・TextBox#commandメソッドのインタフェースを変更(デフォルト付き引数を２つ追加)
+・サンプルtextbox_sample.rbの修正
+・ドキュメントの修正
+
+v2.0.3(2009.4.19)
+・当たり判定の計算を整数計算から実数計算に変更
+・Collision.collision?、Collision.cover?メソッドでチェック漏れがあった問題を修正
+・Utility.product_linerメソッドで、rect.wの値が1の時にエラーが出る問題を修正
+・Sprite.clear!メソッドの追加
+・Utility.product_liner_f/product_liner_by_square_f/product_position_f/product_position_by_square_fメソッドを追加
+・サンプルball_action_sample.rb, utility_test3.rbを追加
+・ドキュメントの修正
+
+v2.0.4(2009.4.25)
+・Windows以外のOSで、install_miyako.rbが正しく動作しない問題を修正
+・CircleCollision.intervalとCircleCollision#intervalメソッドを追加
+・CollisionとCircleCollisionとの当たり判定ができるように、共通のデータを持たせた
+　(判定処理は、レシーバのクラスに依る)
+・Collision.newの引数の幅・高さが0以下の時は例外が発生するように変更
+・Utility.product_liner/product_liner_by_squareの引数を、整数・実数両対応にした
+　(引数に実数が含まれる場合は、全て実数として処理する)
+　(Utility.product_liner_f/product_liner_by_square_fは、互換性のために残す)
+・サンプルutility_test4.rb(utility_test.rbの実数版)、collision_test2.rbを追加
+・サンプルcircle_collision_test.rbの内容を変更
+・MANIFESTファイルを追加
+・gemspecファイルの修正
 
 *******************************************************************************
 このReadMeファイルは「れ～どめ～えじた～」によって作成されました。

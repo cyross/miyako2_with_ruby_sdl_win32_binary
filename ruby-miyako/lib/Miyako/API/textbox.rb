@@ -82,6 +82,9 @@ module Miyako
       @command_page_size = params[:page_size] || @base[1]
 
       @choices = Choices.new
+      @choices.snap(self)
+      @choices.left.top
+
       @now_choice = nil
       @pre_attach = false
       
@@ -92,21 +95,25 @@ module Miyako
       @textarea.snap(self)
       @textarea.centering
 
+      @fiber = nil
+
       if @wait_cursor
 				@wait_cursor.snap(self)
 				@default_wait_cursor_position.call(@wait_cursor, self)
 			end
 			@select_cursor.snap(self) if @select_cursor
 
-      @move_list = [[lambda{               },
-                     lambda{ @choices.right },
-                     lambda{ @choices.left }],
-                    [lambda{ @choices.down },
-                     lambda{                },
-                     lambda{               }],
-                    [lambda{ @choices.up   },
-                     lambda{                },
-                     lambda{               }]]
+      @move_list = [
+                    [lambda{                       },
+                     lambda{ @choices.right_choice },
+                     lambda{ @choices.left_choice  }],
+                    [lambda{ @choices.down_choice  },
+                     lambda{                       },
+                     lambda{                       }],
+                    [lambda{ @choices.up_choice    },
+                     lambda{                       },
+                     lambda{                       }]
+                   ]
                   
     end
 
@@ -117,21 +124,52 @@ module Miyako
     end
 
     #===一列に表示可能な文字数を取得する
-    #返却される値は全角文字の数だが、半角文字も全角文字1文字と計算されるので注意
+    # 返却される値は全角文字の数だが、半角文字も全角文字1文字と計算されるので注意
     #返却値:: 表示可能な文字数
     def columns
       return @base.w
     end
 
     #===一列に表示可能な文字数と行数を取得する
-    #文字数はcolumns、行数はrowsの値と同一
-    #Size構造体のインスタンスとして取得
+    # 文字数はcolumns、行数はrowsの値と同一
+    # Size構造体のインスタンスとして取得
     #返却値:: 表示可能な文字数と行数
     def text_size
       return Size.new(@base.w, @base.h)
     end
 
-    def update #:nodoc:
+    #===並行なブロック処理を開始する
+    # ブロックをFiberに渡して、並行実行できるようにして、Fiberを開始する
+    # ブロックには引数を必ず一つ付けること。引数には自分自身と、
+    #executeメソッドの引数リスト(配列化されて渡ってくる)が渡ってくる。
+    # 渡したブロックは、現在の処理と切り替えて実行することになる
+    # 現在の処理からブロック処理へ切り替えるときは、TextBox#updateメソッドを呼び出す
+    # ブロック処理から現在の処理に戻るには、ブロックから抜け出すか、
+    #draw_text・command・pause・clear・cr・spaceのどれかのメソッドを呼び出す。
+    #_params_:: Fiberに渡す引数リスト。Fiberへは配列として渡される
+    def execute(*params, &block)
+      raise MiyakoError, "This method needs a block!" unless block
+      raise MiyakoError, "This method needs a block with one parameter!" unless block.arity == 2
+      @fiber = Fiber.new(&block)
+      @fiber.resume(self, params)
+    end
+
+    #===並行ブロック処理が実行中かどうかを問い合わせる
+    #返却値:: Fiberが評価中ならば、trueを返す
+    def execute?
+      return @fiber != nil
+    end
+
+    #===並行ブロック処理を更新する
+    # 内部でFiberが評価中ならば、Fiberに処理を移す
+    #返却値:: 自分自身を返す
+    def update
+      begin 
+        @fiber.resume if @fiber
+      rescue FiberError
+        @fiber = nil
+      end
+      return self
     end
     
     #===テキストボックスのアニメーションを開始する
@@ -184,6 +222,8 @@ module Miyako
     def to_sprite
       rect = self.broad_rect
       sprite = Sprite.new(:size=>rect.to_a[2,2], :type=>:ac)
+      Drawing.fill(sprite, [0,0,0])
+      Bitmap.ck_to_ac!(sprite, [0,0,0])
       self.render_to(sprite){|sunit, dunit| sunit.x -= rect.x; sunit.y -= rect.y }
       yield sprite if block_given?
       return sprite
@@ -283,7 +323,7 @@ module Miyako
     #返却値:: 自分自身を返す
     def color_during(color)
       raise MiyakoError, "not given block!" unless block_given?
-      @font.color_during(color){ yield }
+      @font.color_during(Color.to_rgb(color)){ yield }
       return self
     end
 
@@ -342,6 +382,7 @@ module Miyako
       @locate.x = @font.draw_text(@textarea, text, @locate.x, @locate.y + @margin)
       @max_height = [@max_height, @font.line_height].max
       @on_draw.call
+      Fiber.yield if @fiber
       return self
     end
 
@@ -364,11 +405,14 @@ module Miyako
     #ブロック(引数一つのブロックのみ有効)を渡したときは、ブロックを評価して変換したChoicesクラスの配列を作成する。
     #引数は、以下の構成を持つ配列のリスト。
     #[非選択時スプライト(文字列可),選択時スプライト(文字列・nil可),選択結果インスタンス]
-    #　非選択時スプライト：自身が選択されていない時に表示するスプライト。文字列の時は、Shapeクラスなどでスプライトに変更する
-    #　選択時スプライト：自身が選択されている時に表示するスプライト。文字列の時は、Shapeクラスなどでスプライトに変更する
-    #　(そのとき、文字色が赤色になる)。
-    #　nilを渡すと、非選択時スプライトが使われる
-    #　選択結果インスタンス：コマンドが決定したときに、resultメソッドの値として渡すインスタンス。
+    # 非選択時スプライト：自身が選択されていない時に表示するスプライト。文字列の時は、Shapeクラスなどでスプライトに変更する
+    # 選択時スプライト：自身が選択されている時に表示するスプライト。文字列の時は、Shapeクラスなどでスプライトに変更する
+    # (そのとき、文字色が赤色になる)。
+    # nilを渡すと、非選択時スプライトが使われる
+    # 注：スプライトは、画面にスナップしておくこと
+    # 選択結果インスタンス：コマンドが決定したときに、resultメソッドの値として渡すインスタンス。
+    # デフォルト処理の選択肢の位置は、画面左上から下へ順番に設定される
+    # 注：ブロックを渡すとき、選択肢の位置計算が、全選択肢の左上位置が[0,0]とする相対座標になっていること
     #_choices_:: 選択肢の集合(上記参照)
     #返却値:: Choicesクラスのインスタンスの配列
     def create_choices_chain(choices)
@@ -378,9 +422,9 @@ module Miyako
       choices = choices.map{|v|
         org_font_color = @font.color
         @font.color = Color[:white]
-        body = v[0].to_sprite(@font)
+        body = v[0].method(:to_sprite).arity == 0 ? v[0].to_sprite : v[0].to_sprite(@font)
         @font.color = Color[:red]
-        body_selected = v[1] ? v[1].to_sprite(@font) : body
+        body_selected = v[1] ? (v[1].method(:to_sprite).arity == 0 ? v[1].to_sprite : v[1].to_sprite(@font)) : body
         @font.color = org_font_color
         choice = Choices.create_choice(body, body_selected)
         choice.result = v[2]
@@ -392,14 +436,14 @@ module Miyako
         len = cc.length
         right = choices2[x + 1] || choices2[0]
         left = choices2[x - 1]
-        yp = @textarea.y + @locate.y
+        yp = 0
         cc.each_with_index{|v, y|
           v.down = cc[y + 1] || cc[0]
           v.up = cc[y - 1]
           v.right = right[y] || right.last
           v.left = left[y] || left.last
-          v.body.move_to(@textarea.x + @locate.x, yp)
-          v.body_selected.move_to(@textarea.x + @locate.x, yp)
+          v.body.move_to(0, yp)
+          v.body_selected.move_to(0, yp)
           yp += [v.body.broad_rect.h, v.body_selected.broad_rect.h].max
         }
       }
@@ -408,21 +452,37 @@ module Miyako
     
     #===コマンド選択を設定する
     #コマンド選択処理に移る(self#selecting?メソッドがtrueになる)
-    #引数choicesは配列だが、要素は、[コマンド文字列・画像,選択時コマンド文字列・画像,選択した結果(オブジェクト)]
-    #として構成されている
-    #body_selectedをnilにした場合は、bodyと同一となる
-    #body_selectedを文字列を指定した場合は、文字色が赤色になることに注意
-    #_choices_:: 選択肢の配列
+    # 
+    # 引数choicesに配列を渡すとき、各要素の構成は以下のようになる
+    # [コマンド文字列・画像,選択時コマンド文字列・画像,選択した結果(オブジェクト)]
+    #
+    # 引数choicesにChoicesクラスインスタンスを渡したとき、内部で、インスタンスを複写したものに置き換える
+    #
+    # このメソッドが呼び出された時、選択肢はlocateメソッドの値となる位置に移動する
+    # 引数dx,dyともにnil以外の数値を渡すと、上記の位置から更に移動する(位置が補正される)
+    # body_selectedをnilにした場合は、bodyと同一となる
+    # body_selectedを文字列を指定した場合は、文字色が赤色になることに注意
+    #_choices_:: 選択肢の配列、もしくはChoicesクラスのインスタンス
+    #_dx_:: 選択肢を表示するx座標の移動量。デフォルトはnil(移動しない)
+    #_dy_:: 選択肢を表示するy座標の移動量。デフォルトはnil(移動しない)
     #返却値:: 自分自身を返す
-    def command(choices)
-      @choices.clear
-      choices.each{|cc| @choices.create_choices(cc) }
+    def command(choices, dx = nil, dy = nil)
+      if choices.methods.include?(:start_choice)
+        @choices = choices.dup
+        @choices.snap(self)
+      else
+        @choices.clear
+        choices.each{|cc| @choices.create_choices(cc) }
+      end
+      @choices.left{|b| @locate.x}.top{|b| @locate.y}
+      @choices.move(dx, dy) if (dx != nil && dy != nil)
       start_command
+      Fiber.yield if @fiber
       return self
     end
 
     #===コマンド選択を開始する
-    #但し、commandメソッドを呼び出したときは自動的に呼ばれるので注意
+    #但し、commandメソッドを呼び出したときは自動的に呼ばれる
     #返却値:: 自分自身を返す
     def start_command
       raise MiyakoError, "don't set Choice!" if @choices.length == 0
@@ -436,8 +496,11 @@ module Miyako
     end
 
     #===コマンド選択を終了する
+    # 選択した選択肢(Choice構造体)にend_select_procブロックが設定されていれば自動的に評価される
     #返却値:: 自分自身を返す
     def finish_command
+      @choices.end_choice(self)
+      @choices.left.top
       @selecting = false
       return self
     end
@@ -497,11 +560,11 @@ module Miyako
     #===入力待ち状態(ポーズ)に表示するカーソルの位置を設定する
     #ポーズカーソルの位置を、パラメータ二つ(カーソル本体・テキストボックス)を引数に取るブロックで実装する
     #位置は、テキストエリアをsnapしていると想定して実装する
-    #デフォルトは、テキストエリアの中下に置かれる(center.bottom(:inside))
-    #(例)テキストボックスの中下(テキストエリアの外) -> {|wc, tbox| wc.center.bottom(:outside) }
-    # 　 テキストボックスの右下(テキストエリアの中) -> {|wc, tbox| wc.right.bottom }
-    # 　 テキストの最後尾 -> {|wc, tbox| wc.left{|b| tbox.locate.x }.top{|b| tbox.locate.y} }
-    #    (テキストエリアの左上から右下へ現在の描画開始位置(tbox.locateメソッドで示した値)の距離移動した箇所)
+    #デフォルトは、テキストエリアの中下に置かれる(center.bottom)
+    # (例)テキストボックスの中下(テキストエリアの外) -> {|wc, tbox| wc.center.outside_bottom }
+    #  　 テキストボックスの右下(テキストエリアの中) -> {|wc, tbox| wc.right.bottom }
+    #  　 テキストの最後尾 -> {|wc, tbox| wc.left{|b| tbox.locate.x }.top{|b| tbox.locate.y} }
+    #     (テキストエリアの左上から右下へ現在の描画開始位置(tbox.locateメソッドで示した値)の距離移動した箇所)
     #ブロックを渡していなかったり、ブロックの引数が2個でなければエラーを返す
     #返却値:: 自分自身を返す
     def set_wait_cursor_position(&proc)
@@ -513,7 +576,7 @@ module Miyako
     end
 
     #===入力待ち状態(ポーズ)に表示するカーソルの位置をデフォルトに戻す
-    #デフォルトの位置は、テキストエリアの中下(center.bottom(:inside))に設定されている
+    #デフォルトの位置は、テキストエリアの中下(center.bottom)に設定されている
     #返却値:: 自分自身を返す
     def reset_wait_cursor_position
       @wait_cursor_position = @default_wait_cursor_position
@@ -524,9 +587,9 @@ module Miyako
     #===コマンド選択時に表示するカーソルの位置を設定する
     #カーソルの位置を、パラメータ二つ(カーソル本体・選択肢)を引数に取るブロックで実装する
     #位置は、テキストエリアをsnapしていると想定して実装する
-    #デフォルトは、選択肢の左側に置かれる(left(:outside).middle)
-    #(例)選択肢の右側 -> {|wc, choice| wc.right(:outside).middle }
-    # 　 選択肢の真上 -> {|wc, choice| wc.centering }
+    #デフォルトは、選択肢の左側に置かれる(outside_left.middle)
+    # (例)選択肢の右側 -> {|wc, choice| wc.outside_right.middle }
+    #  　 選択肢の真上 -> {|wc, choice| wc.centering }
     #ブロックを渡していなかったり、ブロックの引数が2個でなければエラーを返す
     #返却値:: 自分自身を返す
     def set_select_cursor_position(&proc)
@@ -538,7 +601,7 @@ module Miyako
     end
 
     #===入力待ち状態(ポーズ)に表示するカーソルの位置をデフォルトに戻す
-    #デフォルトの位置は、テキストエリアの中下(center.bottom(:inside))に設定されている
+    #デフォルトの位置は、テキストエリアの中下(center.bottom)に設定されている
     #返却値:: 自分自身を返す
     def reset_select_cursor_position
       @select_cursor_position = @default_select_cursor_position
@@ -556,6 +619,7 @@ module Miyako
       return self unless @wait_cursor
       @wait_cursor_position.call(@wait_cursor, self)
       @on_pause.call
+      Fiber.yield if @fiber
       return self
     end
 
@@ -623,6 +687,7 @@ module Miyako
       @textarea.bitmap.fillRect(0, 0, @size[0], @size[1], [0, 0, 0, 0])
       @locate = Point.new(0, 0)
       @max_height = @font.line_height
+      Fiber.yield if @fiber
       return self
     end
 
@@ -635,6 +700,7 @@ module Miyako
       @locate.x = 0
       @locate.y += height
       @max_height = @font.line_height
+      Fiber.yield if @fiber
       return self
     end
 
@@ -644,6 +710,7 @@ module Miyako
     #返却値:: 自分自身を返す
     def space(length)
       @locate.x += length
+      Fiber.yield if @fiber
       return self
     end
 

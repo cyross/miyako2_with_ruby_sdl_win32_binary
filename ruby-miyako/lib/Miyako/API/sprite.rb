@@ -301,14 +301,29 @@ module Miyako
     #注意事項：
     #１．複製のため、呼び出していくとメモリ使用量が著しく上がる
     #２．レイアウト情報がリセットされる(snapの親子関係が解消される)
-    #返却値:: 自分自身を返す
+    #返却値:: 生成したインスタンスを返す
     def to_sprite
       unit = @unit.dup
       unit.bitmap = Bitmap.create(unit.bitmap.w, unit.bitmap.h)
-      Bitmap.blit_aa(@unit, unit, 0, 0)
-      sprite = Sprite.new(:unit=>unit, :type=>:ac)
+      sprite = Sprite.new(size: [unit.bitmap.w, unit.bitmap.h], type: :ac)
+      Drawing.fill(sprite, [0,0,0])
+      Bitmap.ck_to_ac!(sprite, [0,0,0])
+      Bitmap.blit_aa(self, sprite, 0, 0)
       yield sprite if block_given?
       return sprite
+    end
+
+    #===画像の内容を破壊的に消去する
+    #インスタンスの複製を行う(画像インスタンスも複製)
+    #引数1個のブロックを渡せば、スプライトに補正をかけることが出来る
+    #注意事項：
+    #１．複製のため、呼び出していくとメモリ使用量が著しく上がる
+    #２．レイアウト情報がリセットされる(snapの親子関係が解消される)
+    #返却値:: 自分自身を返す
+    def clear!
+      Drawing.fill(self, [0,0,0])
+      Bitmap.ck_to_ac!(self, [0,0,0])
+      return self
     end
 
     #===インスタンスの内容を別のインスタンスに描画する
@@ -386,11 +401,15 @@ module Miyako
     #重ね合わせの式は、"src and self -> dst"で表される。自分自身と転送先画像は同じ大きさとなる。
     #範囲は、インスタンス側とsrc側との(ow,oh)の小さい方の範囲で転送する。
     #src側の(x,y)をインスタンス側の起点として、src側の(ow,oh)の範囲で転送する。
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の新しい画像インスタンス
-    def and(src)
+    def and(src, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.blit_and!(src, self, dst)
+      self.render_to(dst)
+      raise MiyakoError, "illegal range!" unless Bitmap.blit_and(src, dst, &block)
       return dst
     end
 
@@ -398,10 +417,13 @@ module Miyako
     #重ね合わせの式は、"src and self -> self"で表される。
     #範囲は、インスタンス側とsrc側との(ow,oh)の小さい方の範囲で転送する。
     #src側の(x,y)をインスタンス側の起点として、src側の(ow,oh)の範囲で転送する。
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の自分自身を返す
-    def and!(src)
-      raise MiyakoError, "illegal range!" unless Bitmap.blit_and!(src, self, self)
+    def and!(src, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.blit_and(src, self, &block)
       return self
     end
 
@@ -409,11 +431,15 @@ module Miyako
     #重ね合わせの式は、"src or self -> dst"で表される。自分自身と転送先画像は同じ大きさとなる。
     #範囲は、インスタンス側とsrc側との(ow,oh)の小さい方の範囲で転送する。
     #src側の(x,y)をインスタンス側の起点として、src側の(ow,oh)の範囲で転送する。
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の新しい画像インスタンス
-    def or(src)
+    def or(src, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.blit_or!(src, self, dst)
+      self.render_to(dst)
+      raise MiyakoError, "illegal range!" unless Bitmap.blit_or(src, dst, &block)
       return dst
     end
 
@@ -421,10 +447,13 @@ module Miyako
     #重ね合わせの式は、"src or self -> self"で表される。
     #範囲は、インスタンス側とsrc側との(ow,oh)の小さい方の範囲で転送する。
     #src側の(x,y)をインスタンス側の起点として、src側の(ow,oh)の範囲で転送する。
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の自分自身を返す
-    def or!(src)
-      raise MiyakoError, "illegal range!" unless Bitmap.blit_or!(src, self, self)
+    def or!(src, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.blit_or(src, self, &block)
       return self
     end
 
@@ -432,11 +461,15 @@ module Miyako
     #重ね合わせの式は、"src xor self -> dst"で表される。自分自身と転送先画像は同じ大きさとなる。
     #範囲は、インスタンス側とsrc側との(ow,oh)の小さい方の範囲で転送する。
     #src側の(x,y)をインスタンス側の起点として、src側の(ow,oh)の範囲で転送する。
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の新しい画像インスタンス
-    def xor(src)
+    def xor(src, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.blit_xor!(src, self, dst)
+      self.render_to(dst)
+      raise MiyakoError, "illegal range!" unless Bitmap.blit_xor(src, dst, &block)
       return dst
     end
 
@@ -444,10 +477,13 @@ module Miyako
     #重ね合わせの式は、"src xor self -> self"で表される。
     #範囲は、インスタンス側とsrc側との(ow,oh)の小さい方の範囲で転送する。
     #src側の(x,y)をインスタンス側の起点として、src側の(ow,oh)の範囲で転送する。
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の自分自身を返す
-    def xor!(src)
-      raise MiyakoError, "illegal range!" unless Bitmap.blit_xor!(src, self, self)
+    def xor!(src, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.blit_xor(src, self, &block)
       return self
     end
 
@@ -455,11 +491,14 @@ module Miyako
     #degreeの値が1.0に近づけば近づくほど透明に近づき、
     #degreeの値が-1.0に近づけば近づくほど不透明に近づく(値が-1.0のときは完全不透明、値が0.0のときは変化なし、1.0のときは完全に透明になる)
     #但し、元々αの値がゼロの時は変化しない
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_degree_:: 減少率。-1.0<=degree<=1.0までの実数
     #返却値:: 変更後の新しい画像インスタンス
-    def dec_alpha(degree)
+    def dec_alpha(degree, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.dec_alpha(self, dst, degree)
+      raise MiyakoError, "illegal range!" unless Bitmap.dec_alpha(self, dst, degree, &block)
       return dst
     end
 
@@ -468,10 +507,13 @@ module Miyako
     #degreeの値が-1.0に近づけば近づくほど不透明に近づく
     #(値が-1.0のときは完全不透明、値が0.0のときは変化なし、1.0のときは完全に透明になる)
     #但し、元々αの値がゼロの時は変化しない
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_degree_:: 減少率。-1.0<=degree<=1.0までの実数
     #返却値:: 変更後の自分自身を返す
-    def dec_alpha!(degree)
-      raise MiyakoError, "illegal range!" unless Bitmap.dec_alpha!(self, degree)
+    def dec_alpha!(degree, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.dec_alpha!(self, degree, &block)
       return self
     end
 
@@ -479,11 +521,14 @@ module Miyako
     #赤・青・緑・αの各要素を一定の割合で下げ、黒色に近づける。
     #degreeの値が1.0に近づけば近づくほど黒色に近づく(値が0.0のときは変化なし、1.0のときは真っ黒になる)
     #αの値が0のときは変わらないことに注意！
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_degree_:: 変化率。0.0<=degree<=1.0までの実数
     #返却値:: 変更後の新しい画像インスタンス
-    def black_out(degree)
+    def black_out(degree, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.black_out(self, dst, degree)
+      raise MiyakoError, "illegal range!" unless Bitmap.black_out(self, dst, degree, &block)
       return dst
     end
 
@@ -491,10 +536,13 @@ module Miyako
     #赤・青・緑・αの各要素を一定の割合で下げ、黒色に近づける。
     #degreeの値が1.0に近づけば近づくほど黒色に近づく(値が0.0のときは変化なし、1.0のときは真っ黒になる)
     #αの値が0のときは変わらないことに注意！
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_degree_:: 変化率。0.0<=degree<=1.0までの実数
     #返却値:: 変更後の自分自身を返す
-    def black_out!(degree)
-      raise MiyakoError, "illegal range!" unless Bitmap.black_out!(self, degree)
+    def black_out!(degree, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.black_out!(self, degree, &block)
       return self
     end
 
@@ -502,11 +550,14 @@ module Miyako
     #赤・青・緑・αの各要素を一定の割合で上げ、白色に近づける。
     #degreeの値が1.0に近づけば近づくほど白色に近づく(値が0.0のときは変化なし、1.0のときは真っ白になる)
     #αの値が0のときは変わらないことに注意！
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_degree_:: 変化率。0.0<=degree<=1.0までの実数
     #返却値:: 変更後の新しい画像インスタンス
-    def white_out(degree)
+    def white_out(degree, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.white_out(self, dst, degree)
+      raise MiyakoError, "illegal range!" unless Bitmap.white_out(self, dst, degree, &block)
       return dst
     end
 
@@ -514,142 +565,187 @@ module Miyako
     #赤・青・緑・αの各要素を一定の割合で上げ、白色に近づける。
     #degreeの値が1.0に近づけば近づくほど白色に近づく(値が0.0のときは変化なし、1.0のときは真っ白になる)
     #αの値が0のときは変わらないことに注意！
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_degree_:: 変化率。0.0<=degree<=1.0までの実数
     #返却値:: 変更後の自分自身を返す
-    def white_out!(degree)
-      raise MiyakoError, "illegal range!" unless Bitmap.white_out!(self, degree)
+    def white_out!(degree, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.white_out!(self, degree, &block)
       return self
     end
 
     #===画像のRGB値を反転させる
     #αチャネルの値は変更しない
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #返却値:: 変更後の新しい画像インスタンス
-    def inverse
+    def inverse(&block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.inverse(self, dst)
+      raise MiyakoError, "illegal range!" unless Bitmap.inverse(self, dst, &block)
       return dst
     end
 
     #===画像のRGB値を反転させる
     #αチャネルの値は変更しない
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #返却値:: 変更後の自分自身を返す
-    def inverse!
-      raise MiyakoError, "illegal range!" unless Bitmap.inverse!(self)
+    def inverse!(&block)
+      raise MiyakoError, "illegal range!" unless Bitmap.inverse!(self, &block)
       return self
     end
 
     #===2枚の画像の加算合成を行う
     #範囲は、src側の(ow,oh)の範囲で転送する。転送先の描画開始位置は、src側の(x,y)を左上とする。
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の新しい画像インスタンス
-    def additive(src)
+    def additive(src, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
       self.render_to(dst)
-      raise MiyakoError, "illegal range!" unless Bitmap.additive(src, dst)
+      raise MiyakoError, "illegal range!" unless Bitmap.additive(src, dst, &block)
       return dst
     end
 
     #===2枚の画像の加算合成を行う
     #範囲は、src側の(ow,oh)の範囲で転送する。転送先の描画開始位置は、src側の(x,y)を左上とする。
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の自分自身を返す
-    def additive!(src)
-      raise MiyakoError, "illegal range!" unless Bitmap.additive(src, self)
+    def additive!(src, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.additive(src, self, &block)
       return self
     end
 
     #===2枚の画像の減算合成を行う
     #範囲は、src側の(ow,oh)の範囲で転送する。転送先の描画開始位置は、src側の(x,y)を左上とする。
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の新しい画像インスタンス
-    def subtraction(src)
+    def subtraction(src, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
       self.render_to(dst)
-      raise MiyakoError, "illegal range!" unless Bitmap.subtraction(src, dst)
+      raise MiyakoError, "illegal range!" unless Bitmap.subtraction(src, dst, &block)
       return dst
     end
 
     #===2枚の画像の減算合成を行う
     #範囲は、src側の(ow,oh)の範囲で転送する。転送先の描画開始位置は、src側の(x,y)を左上とする。
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_src_:: 転送元ビットマップ(to_unitメソッドを呼び出すことが出来る/値がnilではないインスタンス)
     #返却値:: 変更後の自分自身を返す
-    def subtraction!(src)
-      raise MiyakoError, "illegal range!" unless Bitmap.subtraction(src, self)
+    def subtraction!(src, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.subtraction(src, self, &block)
       return self
     end
 
     #===画像の色相を変更する
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_degree_:: 色相の変更量。単位は度(実数)。範囲は、-360.0<degree<360.0
     #返却値:: 変更後の新しい画像インスタンス
-    def hue(degree)
+    def hue(degree, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.hue(self, dst, degree)
+      raise MiyakoError, "illegal range!" unless Bitmap.hue(self, dst, degree, &block)
       return dst
     end
 
     #===画像の色相を変更する
     #_degree_:: 色相の変更量。単位は度(実数)。範囲は、-360.0<degree<360.0
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #返却値:: 変更後の画像インスタンス
     #返却値:: 変更後の自分自身を返す
-    def hue!(degree)
+    def hue!(degree, &block)
 			puts "start"
-      raise MiyakoError, "illegal range!" unless Bitmap.hue!(self, degree)
+      raise MiyakoError, "illegal range!" unless Bitmap.hue!(self, degree, &block)
 			puts "finish"
       return self
     end
 
     #===画像の彩度を変更する
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_saturation_:: 彩度の変更量。範囲は0.0〜1.0の実数
     #返却値:: 変更後の新しい画像インスタンス
-    def saturation(saturation)
+    def saturation(saturation, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.saturation(self, dst, saturation)
+      raise MiyakoError, "illegal range!" unless Bitmap.saturation(self, dst, saturation, &block)
       return dst
     end
 
     #===画像の彩度を変更する
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_saturation_:: 彩度の変更量。範囲は0.0〜1.0の実数
     #返却値:: 変更後の自分自身を返す
-    def saturation!(saturation)
-      raise MiyakoError, "illegal range!" unless Bitmap.saturation!(self, saturation)
+    def saturation!(saturation, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.saturation!(self, saturation, &block)
       return self
     end
 
     #===画像の明度を変更する
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_value_:: 明度の変更量。範囲は0.0〜1.0の実数
     #返却値:: 変更後の新しい画像インスタンス
-    def value(value)
+    def value(value, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.value(self, dst, value)
+      raise MiyakoError, "illegal range!" unless Bitmap.value(self, dst, value, &block)
       return dst
     end
 
     #===画像の明度を変更する
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_value_:: 明度の変更量。範囲は0.0〜1.0の実数
     #返却値:: 変更後の画像インスタンス
-    def value!(value)
-      raise MiyakoError, "illegal range!" unless Bitmap.value!(self, value)
+    def value!(value, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.value!(self, value, &block)
       return self
     end
 
     #===画像の色相・彩度・明度を変更する
+    #ブロックを渡すと、src,dst側のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|src側SpriteUnit,dst側SpriteUnit|となる。
     #_degree_:: 色相の変更量。単位は度(実数)。範囲は、-360.0<degree<360.0
     #_saturation_:: 彩度の変更量。範囲は0.0〜1.0の実数
     #_value_:: 明度の変更量。範囲は0.0〜1.0の実数
     #返却値:: 変更後の新しい画像インスタンス
-    def hsv(degree, saturation, value)
+    def hsv(degree, saturation, value, &block)
       dst = Sprite.new(:size=>self.size, :type=>:ac)
-      raise MiyakoError, "illegal range!" unless Bitmap.hsv(self, dst, degree, saturation, value)
+      raise MiyakoError, "illegal range!" unless Bitmap.hsv(self, dst, degree, saturation, value, &block)
       return dst
     end
 
     #===画像の色相・彩度・明度を変更する
+    #ブロックを渡すと、自分自身のSpriteUnitを更新して、それを実際の転送に反映させることが出来る
+    #(ブロック引数のインスタンスは複写しているので、メソッドの引数として渡した値が持つSpriteUnitには影響しない)
+    #ブロックの引数は、|SpriteUnit|となる。
     #_degree_:: 色相の変更量。単位は度(実数)。範囲は、-360.0<degree<360.0
     #_saturation_:: 彩度の変更量。範囲は0.0〜1.0の実数
     #_value_:: 明度の変更量。範囲は0.0〜1.0の実数
     #返却値:: 変更後の画像インスタンス
-    def hsv!(degree, saturation, value)
-      raise MiyakoError, "illegal range!" unless Bitmap.hsv!(self, degree, saturation, value)
+    def hsv!(degree, saturation, value, &block)
+      raise MiyakoError, "illegal range!" unless Bitmap.hsv!(self, degree, saturation, value, &block)
       return self
     end
   end
